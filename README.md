@@ -56,7 +56,7 @@ cd 你的项目名
 go mod tidy
 
 # 配置环境
-# 请修改 config.yaml 或 .env 文件中的 MySQL、Redis连接信息
+# 请修改 config.yaml 或 .env 文件中的 MySQL、Redis等连接信息
 
 
 3. 运行服务
@@ -66,4 +66,4 @@ go run main.go
 
 📄 许可证
 
-MIT License
+本项目采用 MIT License 开源许可证。
