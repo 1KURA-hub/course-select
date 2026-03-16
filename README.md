@@ -34,6 +34,8 @@
 
 压测结果截图：
 
+![JMeter 压测报告](./docs/jmeter.png)
+
 🛠️ 快速启动 (Quick Start)
 
 1. 环境依赖
