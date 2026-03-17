@@ -19,7 +19,7 @@
 对于抢课成功的流量，系统通过 RabbitMQ 异步投递落库消息。消费端采用 **Worker Pool 协程池**平缓拉取，并**关闭自动 ACK**；结合 `success/processing` 缓存状态机精细化控制 NACK 重试机制。底层配合 **MySQL 悲观锁 (`FOR UPDATE`)** 与唯一索引兜底，实现流量平滑过渡与绝对的幂等落库。
 
 ### 5. 全链路资源防泄露 (Context 级联控制)
-深度应用 Go 并发哲学，将网关层 HTTP 请求的生命周期 (`c.Request.Context()`) 一路透传至 Redis I/O 与 GORM 底层，构建**父子级联超时树**。彻底解决因客户端异常断网或服务拥塞引发的后端“僵尸协程”堆积与内存泄漏问题。
+应用 Go 并发哲学，将网关层 HTTP 请求的生命周期 (`c.Request.Context()`) 一路透传至 Redis I/O 与 GORM 底层，构建**父子级联超时树**。彻底解决因客户端异常断网或服务拥塞引发的后端“僵尸协程”堆积与内存泄漏问题。
 
 ## 性能压测报告 (JMeter)
 
@@ -29,9 +29,9 @@
 * **平均响应时间 (Average RT):** 72 ms
 * **错误率 (Error Rate):** 0.00% (达成 0 超卖、0 宕机)
 
-> **压测结果截图：**
+> **压测结果截图：**  
 
-![JMeter 压测报告](./docs/jmeter.png)
+![JMeter 压测报告](./docs/jmeter.png) 
 
 ## 快速启动 (Quick Start)
 
