@@ -134,7 +134,7 @@ func SelectResult(c *gin.Context) {
 		})
 		return
 	}
-	//value不为空 说明Redis里面有记录 选课成功了
+	// value不为空 说明Redis里面有记录 选课成功了
 	if value == "1" {
 		c.JSON(http.StatusOK, gin.H{
 			"code":      http.StatusOK,
