@@ -27,7 +27,7 @@ func Register(c *gin.Context) {
 		Password: request.Password,
 		Name:     request.Name,
 	}
-	err = service.Register(student)
+	err = service.Register(c.Request.Context(), student)
 	if err != nil {
 		if err == service.ErrUserExist {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -62,8 +62,9 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
+
 	// 模糊返回错误原因
-	savedStu, err := service.Login(request.Sid, request.Password)
+	savedStu, err := service.Login(c.Request.Context(), request.Sid, request.Password)
 	if errors.Is(err, service.ErrUserPasswordError) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code": http.StatusBadRequest,
@@ -71,6 +72,7 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
+
 	// 其他情况就是数据库挂了
 	if err != nil {
 		c.Error(err)
@@ -80,6 +82,7 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
+
 	// 登录成功生成token 包含学生ID和姓名信息
 	var tokenstr string
 	tokenstr, err = utils.GenToken(savedStu.ID, savedStu.Name)
@@ -91,6 +94,7 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":  http.StatusOK,
 		"token": tokenstr,

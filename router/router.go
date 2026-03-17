@@ -27,14 +27,14 @@ func InitRouter() *gin.Engine {
 	r.POST("/register", api.Register)
 	r.POST("/login", api.Login)
 	r.GET("/courses", api.GetCourseList)
-	r.GET("/courses/:id", api.GetCourseById)
+	r.GET("/courses/:id", middleware.Bloomfilter(), api.GetCourseById)
 
 	// 路由组auth
 	auth := r.Group("/auth")
 	auth.Use(middleware.AuthMiddleware())
 	{
-		auth.POST("/select", api.SelectCourse)
-		auth.GET("/result", api.SelectResult)
+		auth.POST("/select/:id", middleware.Bloomfilter(), api.SelectCourse)
+		auth.GET("/result/:id", middleware.Bloomfilter(), api.SelectResult)
 	}
 
 	return r

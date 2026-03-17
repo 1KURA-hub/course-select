@@ -2,6 +2,8 @@ package api
 
 import (
 	"errors"
+	"fmt"
+	"go-course/global"
 	"go-course/service"
 	"net/http"
 	"strconv"
@@ -12,7 +14,7 @@ import (
 
 // 获取课程列表接口
 func GetCourseList(c *gin.Context) {
-	courses, err := service.GetCourseList()
+	courses, err := service.GetCourseList(c.Request.Context())
 	if err != nil {
 		// c.Error把具体错误存入Context ginlogger把err写入日志
 		c.Error(err)
@@ -22,6 +24,7 @@ func GetCourseList(c *gin.Context) {
 		})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": http.StatusOK,
 		"data": courses,
@@ -39,7 +42,17 @@ func GetCourseById(c *gin.Context) {
 		})
 		return
 	}
-	course, err := service.GetCourseById(uint(id))
+
+	// 布隆过滤器 快速过滤不存在的课程ID
+	if !global.CourseBloomFilter.TestString(fmt.Sprintf("%d", uint(id))) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code": http.StatusBadRequest,
+			"msg":  "不存在的课程",
+		})
+		return
+	}
+
+	course, err := service.GetCourseById(c.Request.Context(), uint(id))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -55,6 +68,7 @@ func GetCourseById(c *gin.Context) {
 		})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": http.StatusOK,
 		"data": course,

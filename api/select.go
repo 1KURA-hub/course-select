@@ -1,14 +1,12 @@
 package api
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"go-course/global"
 	"go-course/service"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -36,8 +34,9 @@ func SelectCourse(c *gin.Context) {
 		})
 		return
 	}
-	info := targetCourse{}
-	err := c.ShouldBindJSON(&info)
+	// /select/:id url参数中获取课程id
+	courseIDstr := c.Param("id")
+	courseID, err := strconv.Atoi(courseIDstr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code": http.StatusBadRequest,
@@ -46,7 +45,7 @@ func SelectCourse(c *gin.Context) {
 		return
 	}
 
-	err = service.SelectCourse(studentID, info.CourseID)
+	err = service.SelectCourse(c.Request.Context(), studentID, uint(courseID))
 	if err != nil {
 		if errors.Is(err, service.ErrSystemBusy) {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -80,6 +79,7 @@ func SelectResult(c *gin.Context) {
 		})
 		return
 	}
+
 	// 空接口类型断言为uint
 	studentID, ok := val.(uint)
 	if !ok {
@@ -92,32 +92,20 @@ func SelectResult(c *gin.Context) {
 		return
 	}
 
-	// 在url的query获取courseID(string类型)
-	courseIDstr := c.Query("course_id")
-	if courseIDstr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code": http.StatusBadRequest,
-			"msg":  "用户未填写course_id",
-		})
-		return
-	}
+	courseIDstr := c.Param("id")
 	courseID, err := strconv.Atoi(courseIDstr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code": http.StatusBadRequest,
-			"msg":  "用户填入course_id格式错误",
+			"msg":  "课程参数错误",
 		})
 		return
 	}
-	// 协程超时控制
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
 
 	// 消费者接收消息完成数据库的操作后会在Redis里面生成key为res:studentID:courseID value为1的记录
 	// 在Redis中查找res:1:1这样的key对应的value
 	key := fmt.Sprintf("res:%d:%d", studentID, courseID)
-
-	value, err := global.RDB.Get(ctx, key).Result()
+	value, err := global.RDB.Get(c.Request.Context(), key).Result()
 	if err != nil {
 		// Redis查询结果为空 说明消息还没发送过来或者对数据库的操作还在排队
 		if err == redis.Nil {
@@ -134,6 +122,7 @@ func SelectResult(c *gin.Context) {
 		})
 		return
 	}
+
 	// value不为空 说明Redis里面有记录 选课成功了
 	if value == "1" {
 		c.JSON(http.StatusOK, gin.H{
@@ -141,6 +130,7 @@ func SelectResult(c *gin.Context) {
 			"msg":       "抢课成功",
 			"course_id": courseID,
 		})
+		return
 	}
 
 	if value == "-1" {
@@ -149,5 +139,6 @@ func SelectResult(c *gin.Context) {
 			"msg":       "抢课失败",
 			"course_id": courseID,
 		})
+		return
 	}
 }

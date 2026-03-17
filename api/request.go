@@ -12,8 +12,3 @@ type LoginRequest struct {
 	Sid      string `json:"sid"`
 	Password string `json:"password"`
 }
-
-// 目标课程
-type targetCourse struct {
-	CourseID uint `json:"course_id"`
-}
