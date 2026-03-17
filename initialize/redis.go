@@ -40,7 +40,7 @@ func LoadStockToRedis() error {
 	defer cancel()
 
 	// 获取课程列表信息
-	courses, err := dao.GetCourseList()
+	courses, err := dao.GetCourseList(ctx)
 	if err != nil {
 		return err
 	}

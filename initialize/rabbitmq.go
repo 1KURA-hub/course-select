@@ -21,6 +21,7 @@ func InitRabbitMQ() {
 		global.Logger.Fatal("通道声明失败", zap.Error(err))
 		panic(err)
 	}
+
 	// 声明队列
 	_, err = global.MQChannel.QueueDeclare(
 		"redisQueue",

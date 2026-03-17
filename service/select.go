@@ -35,18 +35,18 @@ func SelectCourse(ctx context.Context, studentID, courseID uint) error {
 	defer cancel()
 
 	// Redis分布式锁过滤短时间内大量重复请求
-	recordkey := fmt.Sprintf("lock:%d:%d", studentID, courseID)
+	lockkey := fmt.Sprintf("lock:%d:%d", studentID, courseID)
 
-	repeat := global.RDB.SetNX(timeoutCtx, recordkey, studentID, 2*time.Second)
+	exists := global.RDB.SetNX(timeoutCtx, lockkey, studentID, 2*time.Second)
 
 	// 判断是否加锁成功
-	if !repeat.Val() {
+	if !exists.Val() {
 		return ErrRepeatSelection
 	}
-	defer global.RDB.Del(context.Background(), recordkey)
+	defer global.RDB.Del(context.Background(), lockkey)
 
 	// 选课请求key和课程库存key
-	requestkey := fmt.Sprintf("record:%d:%d", studentID, courseID)
+	requestkey := fmt.Sprintf("request:%d:%d", studentID, courseID)
 	stockkey := fmt.Sprintf("course:stock:%d", courseID)
 
 	// Lua keys args
