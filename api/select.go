@@ -119,7 +119,7 @@ func SelectResult(c *gin.Context) {
 
 	value, err := global.RDB.Get(ctx, key).Result()
 	if err != nil {
-		//Redis查询结果为空 说明消息还没发送过来或者对数据库的操作还在排队
+		// Redis查询结果为空 说明消息还没发送过来或者对数据库的操作还在排队
 		if err == redis.Nil {
 			c.JSON(http.StatusOK, gin.H{
 				"data": nil,
