@@ -48,8 +48,21 @@ func Consumer() {
 					d.Ack(false)
 					continue
 				}
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
 				key := fmt.Sprintf("res:%d:%d", msg.StudentID, msg.CourseID)
+				msgkey := fmt.Sprintf("msg:%d:%d", msg.StudentID, msg.CourseID)
+
+				// Redis分布式锁保证消息不重复
+				exists := global.RDB.SetNX(ctx, msgkey, "processing", time.Minute*10)
+				if !exists.Val() {
+					global.Logger.Warn("命中消息防重拦截 直接丢弃废消息",
+						zap.Uint("studentID", msg.StudentID),
+						zap.Uint("courseID", msg.CourseID))
+					// 消息重复 确认消费
+					d.Ack(false)
+					continue
+				}
 
 				// 数据库创建选课记录封装到了一个事务里面 并对TotalStock库存加锁 有错误则回滚
 				err = service.CreateRecord(msg.StudentID, msg.CourseID)
@@ -60,6 +73,8 @@ func Consumer() {
 							global.Logger.Debug("库存不足",
 								zap.Uint("课程ID", msg.CourseID))
 						}
+						// 消息消费成功 更新分布式锁value
+						global.RDB.Set(ctx, msgkey, "success", time.Minute*10)
 						global.RDB.Set(ctx, key, -1, time.Minute)
 						cancel()
 						// 库存不足时 删除消息 进入下一次循环
@@ -71,6 +86,7 @@ func Consumer() {
 						global.Logger.Warn("并发重复选课，已拦截",
 							zap.Uint("uid", msg.StudentID),
 							zap.Uint("cid", msg.CourseID))
+						global.RDB.Set(ctx, msgkey, "success", time.Minute*10)
 						global.RDB.Set(ctx, key, -1, time.Minute)
 						cancel()
 						d.Ack(false) // 确认消费 不要重试了
@@ -81,6 +97,8 @@ func Consumer() {
 						zap.Uint("课程ID", msg.CourseID),
 						zap.Error(err))
 					time.Sleep(1 * time.Second)
+					// 消息消费失败需要重试 删除分布式锁
+					global.RDB.Del(ctx, msgkey)
 					cancel()
 					// 系统出错 把这条消息重新加入消息队列
 					d.Reject(true)

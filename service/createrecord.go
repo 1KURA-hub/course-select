@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"go-course/dao"
 	"go-course/global"
 	"go-course/model"
 	"strings"
@@ -15,12 +14,12 @@ import (
 // 创建选课记录
 func CreateRecord(studentID, courseID uint) error {
 	// 判断是否重复选课
-	_, err := dao.GetSelectionBySIDAndCID(studentID, courseID)
-	if err == nil {
-		return ErrRepeatSelection
-	} else if err != gorm.ErrRecordNotFound {
-		return err
-	}
+	//_, err := dao.GetSelectionBySIDAndCID(studentID, courseID)
+	//if err == nil {
+	//	return ErrRepeatSelection
+	//} else if err != gorm.ErrRecordNotFound {
+	//	return err
+	//}
 
 	// 开启事务 事务的global.DB用tx
 	return global.DB.Transaction(func(tx *gorm.DB) error {
