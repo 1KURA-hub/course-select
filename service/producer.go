@@ -22,12 +22,14 @@ func Send(studentID, courseID uint) error {
 		StudentID: studentID,
 		CourseID:  courseID,
 	}
+
 	// message序列化
 	body, err := json.Marshal(message)
 	if err != nil {
 		global.Logger.Error("消息序列化失败", zap.Error(err))
 		return errors.New("系统原因 选课失败")
 	}
+
 	// 防止网络抖动导致生产者卡死
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -47,6 +49,7 @@ func Send(studentID, courseID uint) error {
 			Body:         body,
 		},
 	)
+
 	if err != nil {
 		global.Logger.Error("消息发布失败", zap.Error(err))
 

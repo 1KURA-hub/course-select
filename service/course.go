@@ -18,18 +18,14 @@ import (
 
 var sf singleflight.Group
 
-func GetCourseList() ([]model.Course, error) {
-	return dao.GetCourseList()
+func GetCourseList(ctx context.Context) ([]model.Course, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*2)
+	defer cancel()
+	return dao.GetCourseList(timeoutCtx)
 }
 
-func GetCourseById(id uint) (*model.Course, error) {
-	// 布隆过滤器验证ID是否存在
-	if !global.CourseBloomFilter.TestString(fmt.Sprintf("%d", id)) {
-		global.Logger.Warn("布隆过滤器拦截了恶意伪造的课程ID", zap.Uint("id", id))
-		return nil, gorm.ErrRecordNotFound
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func GetCourseById(ctx context.Context, id uint) (*model.Course, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*2)
 	defer cancel()
 
 	// 缓存空值
@@ -57,7 +53,7 @@ func GetCourseById(id uint) (*model.Course, error) {
 		global.Logger.Debug("Redis查询为空")
 		// 高并发下 保证同一时间只有一个协程查询数据库构建缓存
 		v, sfErr, shared := sf.Do(coursekey, func() (interface{}, error) {
-			course, dbErr := dao.GetCourseById(id)
+			course, dbErr := dao.GetCourseById(timeoutCtx, id)
 			if dbErr == nil {
 				// 结构体序列化为JSON存入Redis
 				courseJSON, err := json.Marshal(course)

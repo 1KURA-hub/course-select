@@ -8,12 +8,11 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 // 全局预加载 Lua 脚本，避免每次请求都重新编译，压榨极限性能
 var selectScript = redis.NewScript(`
--- 1. 校验 预选课记录 是否存在
+-- 1. 校验 预选课请求 是否存在
 local exists = redis.call('get', KEYS[1])
 if exists then
     return -1 -- ErrRepeatRequest
@@ -30,27 +29,23 @@ redis.call('set',KEYS[1],1,'EX',3600)
 return 1 -- 成功
 `)
 
-func SelectCourse(studentID, courseID uint) error {
-	// 布隆过滤器 快速过滤不存在的课程ID
-	if !global.CourseBloomFilter.TestString(fmt.Sprintf("%d", courseID)) {
-		return gorm.ErrRecordNotFound
-	}
-
-	// ctx超时控制 协程生命周期最多2s
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func SelectCourse(ctx context.Context, studentID, courseID uint) error {
+	// 网关ctx级联取消 timeoutCtx超时控制 业务逻辑生命周期最多2s
+	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	// Redis分布式锁过滤短时间内大量重复请求
 	recordkey := fmt.Sprintf("lock:%d:%d", studentID, courseID)
 
-	repeat := global.RDB.SetNX(ctx, recordkey, studentID, 2*time.Second)
+	repeat := global.RDB.SetNX(timeoutCtx, recordkey, studentID, 2*time.Second)
 
 	// 判断是否加锁成功
 	if !repeat.Val() {
 		return ErrRepeatSelection
 	}
+	defer global.RDB.Del(context.Background(), recordkey)
 
-	// 选课路径key和课程库存key
+	// 选课请求key和课程库存key
 	requestkey := fmt.Sprintf("record:%d:%d", studentID, courseID)
 	stockkey := fmt.Sprintf("course:stock:%d", courseID)
 
@@ -59,7 +54,7 @@ func SelectCourse(studentID, courseID uint) error {
 	args := []interface{}{1}
 
 	// Lua脚本实现不超卖 查询库存和扣减库存成为原子性操作
-	res, err := selectScript.Run(ctx, global.RDB, keys, args...).Int()
+	res, err := selectScript.Run(timeoutCtx, global.RDB, keys, args...).Int()
 	if err != nil {
 		global.Logger.Error("Lua脚本执行出错", zap.Error(err))
 		return ErrSystemBusy
@@ -86,8 +81,8 @@ func SelectCourse(studentID, courseID uint) error {
 	// 预扣减成功 发送消息到MQ
 	err = Send(studentID, courseID)
 	if err != nil {
-		global.RDB.Incr(ctx, stockkey)
-		global.RDB.Del(ctx, requestkey)
+		global.RDB.Incr(timeoutCtx, stockkey)
+		global.RDB.Del(timeoutCtx, requestkey)
 		global.Logger.Error("消息发送出错", zap.Error(err))
 		return ErrSystemBusy
 	}

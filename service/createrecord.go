@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"go-course/global"
 	"go-course/model"
@@ -12,19 +13,12 @@ import (
 )
 
 // 创建选课记录
-func CreateRecord(studentID, courseID uint) error {
-	// 判断是否重复选课
-	//_, err := dao.GetSelectionBySIDAndCID(studentID, courseID)
-	//if err == nil {
-	//	return ErrRepeatSelection
-	//} else if err != gorm.ErrRecordNotFound {
-	//	return err
-	//}
-
+func CreateRecord(timeoutCtx context.Context, studentID, courseID uint) error {
 	// 开启事务 事务的global.DB用tx
-	return global.DB.Transaction(func(tx *gorm.DB) error {
+	return global.DB.WithContext(timeoutCtx).Transaction(func(tx *gorm.DB) error {
 		var course model.Course
 		course.ID = courseID
+
 		// select for update 当前读 对库存上记录锁
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", course.ID).First(&course).Error
 		if err != nil {
@@ -34,8 +28,8 @@ func CreateRecord(studentID, courseID uint) error {
 			}
 			global.Logger.Error("数据库查询课程时出错", zap.Uint("course_id", courseID), zap.Error(err))
 			return ErrSystemBusy
-
 		}
+
 		if course.TotalStock > 0 {
 			// 更新课程库存
 			course.TotalStock--
@@ -44,6 +38,7 @@ func CreateRecord(studentID, courseID uint) error {
 				global.Logger.Error("数据库更新课程库存时出错", zap.Uint("course_id", courseID), zap.Error(err))
 				return ErrSystemBusy
 			}
+
 			// 创建选课记录实例
 			var selection = &model.Selection{
 				StudentID: studentID,
@@ -58,6 +53,7 @@ func CreateRecord(studentID, courseID uint) error {
 					global.Logger.Error("重复选课", zap.Error(err))
 					return ErrRepeatSelection
 				}
+
 				global.Logger.Error("数据库新建选课记录出错",
 					zap.Uint("studentID", studentID),
 					zap.Uint("course_id", courseID),
