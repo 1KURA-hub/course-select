@@ -105,6 +105,8 @@ func Consumer() {
 					continue
 
 				}
+				// 消息消费成功 数据库正常扣减
+				global.RDB.Set(ctx, msgkey, "success", time.Minute*10)
 
 				err = global.RDB.Set(ctx, key, 1, 5*time.Minute).Err()
 				// 不能用defer 因为这里的for range是一个死循环 完成一次Redis操作直接cancel
