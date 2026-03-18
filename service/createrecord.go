@@ -14,7 +14,7 @@ import (
 
 // 创建选课记录
 func CreateRecord(timeoutCtx context.Context, studentID, courseID uint) error {
-	// 开启事务 事务的global.DB用tx
+	// 开启事务 global.DB用tx
 	return global.DB.WithContext(timeoutCtx).Transaction(func(tx *gorm.DB) error {
 		var course model.Course
 		course.ID = courseID
