@@ -103,7 +103,7 @@ func processSingleMessage(d amqp091.Delivery) {
 				zap.Uint("uid", msg.StudentID),
 				zap.Uint("cid", msg.CourseID))
 			global.RDB.Set(ctx, msgkey, "success", time.Minute*10)
-			global.RDB.Set(ctx, key, 1, time.Minute) // 修复：既然是重复选课，说明已成功，写入1
+			global.RDB.Set(ctx, key, 1, time.Minute) // 重复选课 说明已成功 写入1
 			// 确认消费 不要重试了
 			d.Ack(false)
 			return
