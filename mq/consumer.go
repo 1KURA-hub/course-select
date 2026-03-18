@@ -66,7 +66,7 @@ func processSingleMessage(d amqp091.Delivery) {
 	msgkey := fmt.Sprintf("msg:%d:%d", msg.StudentID, msg.CourseID)
 
 	// Redis分布式锁保证消息不重复
-	exists := global.RDB.SetNX(ctx, msgkey, "processing", time.Minute*10)
+	exists := global.RDB.SetNX(ctx, msgkey, "processing", time.Second*10)
 	if !exists.Val() {
 		// 抢锁失败 确认锁的value
 		status, _ := global.RDB.Get(ctx, msgkey).Result()
@@ -75,7 +75,8 @@ func processSingleMessage(d amqp091.Delivery) {
 			d.Ack(false)
 			return
 		}
-		// "processing"说明别人正在处理（或者别人宕机了锁还没过期）
+		// "processing"说明别人正在处理 如果是mysql宕机 命中了业务逻辑中的错误 则会删除分布式锁
+		// 但是一些系统崩溃 无法删除分布式锁 重试的消息就会丢失 检测到"processing"必须NACK
 		d.Reject(true)
 		return
 	}
@@ -90,7 +91,7 @@ func processSingleMessage(d amqp091.Delivery) {
 					zap.Uint("课程ID", msg.CourseID))
 			}
 			// 消息消费成功 更新分布式锁value
-			global.RDB.Set(ctx, msgkey, "success", time.Minute*10)
+			global.RDB.Set(ctx, msgkey, "success", time.Hour)
 			global.RDB.Set(ctx, key, -1, time.Minute)
 			// 库存不足时 删除消息 进入下一次循环
 			d.Ack(false)
@@ -102,7 +103,8 @@ func processSingleMessage(d amqp091.Delivery) {
 			global.Logger.Warn("并发重复选课，已拦截",
 				zap.Uint("uid", msg.StudentID),
 				zap.Uint("cid", msg.CourseID))
-			global.RDB.Set(ctx, msgkey, "success", time.Minute*10)
+			// 假设选课周期为1天 消息消费成功后将锁续期 与requestkey生命周期一致
+			global.RDB.Set(ctx, msgkey, "success", time.Hour)
 			global.RDB.Set(ctx, key, 1, time.Minute) // 重复选课 说明已成功 写入1
 			// 确认消费 不要重试了
 			d.Ack(false)
@@ -122,7 +124,7 @@ func processSingleMessage(d amqp091.Delivery) {
 	}
 
 	// 消息消费成功 数据库正常扣减
-	global.RDB.Set(ctx, msgkey, "success", time.Minute*10)
+	global.RDB.Set(ctx, msgkey, "success", time.Hour)
 
 	err = global.RDB.Set(ctx, key, 1, 5*time.Minute).Err()
 	// 不能用defer 因为这里的for range是一个死循环 完成一次Redis操作直接cancel
