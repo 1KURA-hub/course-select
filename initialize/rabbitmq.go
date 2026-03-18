@@ -1,6 +1,7 @@
 package initialize
 
 import (
+	"fmt"
 	"go-course/global"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -9,8 +10,17 @@ import (
 
 // 初始化RabbitMQ连接
 func InitRabbitMQ() {
+	mqConf := global.Settings.RabbitMQ
+	// 2. 动态拼接 DSN (Data Source Name)
+	// 格式: amqp://user:password@host:port/
+	dsn := fmt.Sprintf("amqp://%s:%s@%s:%d/",
+		mqConf.User,
+		mqConf.Password,
+		mqConf.Host,
+		mqConf.Port,
+	)
 	// 建立服务器与MQ的连接
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	conn, err := amqp.Dial(dsn)
 	if err != nil {
 		global.Logger.Fatal("连接RabbitMQ失败", zap.Error(err))
 	}
@@ -24,7 +34,7 @@ func InitRabbitMQ() {
 
 	// 声明队列
 	_, err = global.MQChannel.QueueDeclare(
-		"redisQueue",
+		mqConf.QueueName,
 		true,
 		false,
 		false,
