@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 创建学生函数
+// 创建学生
 func CreateStu(timeoutCtx context.Context, student *model.Student) error {
 	err := global.DB.WithContext(timeoutCtx).Create(student).Error
 	if err != nil {
