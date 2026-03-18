@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 获取课程列表函数
+// 获取课程列表
 func GetCourseList(timeoutCtx context.Context) ([]model.Course, error) {
 	var courses []model.Course
 	// gorm会自动通过&courses的类型Course 在数据库中找course的表 存入courses课程切片

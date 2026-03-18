@@ -19,7 +19,7 @@ func CreateRecord(timeoutCtx context.Context, studentID, courseID uint) error {
 		var course model.Course
 		course.ID = courseID
 
-		// select for update 当前读 对库存上记录锁
+		// select for update 对库存上记录锁
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", course.ID).First(&course).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
