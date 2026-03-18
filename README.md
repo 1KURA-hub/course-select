@@ -43,8 +43,7 @@
 * **核心链路平均响应时间 (Average RT):** 72 ms
 * **错误率 (Error Rate):** 0.00% (完美达成 0 超卖、系统平稳无宕机)
 
-*(此处可补充您的 JMeter 聚合报告截图)*
-`![JMeter 压测报告](./docs/jmeter.png)`
+![JMeter 压测报告](./docs/jmeter.png)
 
 ##  快速启动 (Quick Start)
 
