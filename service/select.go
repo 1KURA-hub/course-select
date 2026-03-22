@@ -56,6 +56,9 @@ func SelectCourse(ctx context.Context, studentID, courseID uint) error {
 	// Lua脚本实现不超卖 查询库存和扣减库存成为原子性操作
 	res, err := selectScript.Run(timeoutCtx, global.RDB, keys, args...).Int()
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return ErrSystemBusy
+		}
 		global.Logger.Error("Lua脚本执行出错", zap.Error(err))
 		return ErrSystemBusy
 	}
