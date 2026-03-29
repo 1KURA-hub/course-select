@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: go_course
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+
+  redis:
+    image: redis:alpine
+    command: redis-server --requirepass redispassword
+    restart: always
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "15672:15672"
+    restart: always
+
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+      - "6060:6060"
+    depends_on:
+      - mysql
+      - redis
+      - rabbitmq
+    restart: always
