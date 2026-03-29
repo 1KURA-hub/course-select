@@ -33,7 +33,7 @@ func CreateRecord(timeoutCtx context.Context, studentID, courseID uint) error {
 		if course.Stock > 0 {
 			// 更新课程库存
 			course.Stock--
-			err = tx.Model(&course).Update("total_stock", course.Stock).Error
+			err = tx.Model(&course).Update("stock", course.Stock).Error
 			if err != nil {
 				global.Logger.Error("数据库更新课程库存时出错", zap.Uint("course_id", courseID), zap.Error(err))
 				return ErrSystemBusy
