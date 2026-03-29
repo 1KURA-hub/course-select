@@ -12,7 +12,8 @@ import (
 func InitRouter() *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.Use(middleware.GinLogger())
+	//r.Use(middleware.GinLogger())
+	//pprof.Register(r)
 
 	// CORS 跨域资源共享 配置
 	r.Use(cors.New(cors.Config{
