@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go-course/global"
 	"time"
@@ -33,17 +34,6 @@ func SelectCourse(ctx context.Context, studentID, courseID uint) error {
 	// 网关ctx级联取消 timeoutCtx超时控制 业务逻辑生命周期最多2s
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-
-	// Redis分布式锁过滤短时间内大量重复请求
-	lockkey := fmt.Sprintf("lock:%d:%d", studentID, courseID)
-
-	exists := global.RDB.SetNX(timeoutCtx, lockkey, studentID, 2*time.Second)
-
-	// 判断是否加锁成功
-	if !exists.Val() {
-		return ErrRepeatSelection
-	}
-	defer global.RDB.Del(context.Background(), lockkey)
 
 	// 选课请求key和课程库存key
 	requestkey := fmt.Sprintf("request:%d:%d", studentID, courseID)
