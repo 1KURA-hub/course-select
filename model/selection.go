@@ -1,9 +1,7 @@
 package model
 
-import "gorm.io/gorm"
-
 type Selection struct {
-	gorm.Model
+	ID uint `gorm:"primarykey"`
 	// 选课表 student_id和course_id建立唯一联合索引 保证不重复选课
 	StudentID uint `gorm:"index;uniqueIndex:idx_student_course;comment:学生ID"`
 

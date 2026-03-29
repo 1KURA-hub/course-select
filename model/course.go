@@ -1,13 +1,11 @@
 package model
 
-import "gorm.io/gorm"
-
 type Course struct {
-	gorm.Model
+	ID uint `gorm:"primarykey"`
 
 	Name string `gorm:"type:varchar(50);not null"`
 
-	TotalStock int `gorm:"not null"`
+	Stock int `gorm:"not null"`
 
 	TeacherID int `gorm:"index"`
 }

@@ -1,9 +1,7 @@
 package model
 
-import "gorm.io/gorm"
-
 type Student struct {
-	gorm.Model
+	ID uint `gorm:"primarykey"`
 
 	// Sid学号 唯一索引
 	Sid string `gorm:"type:varchar(20);not null;uniqueIndex"`

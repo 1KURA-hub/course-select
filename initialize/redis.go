@@ -47,11 +47,11 @@ func LoadStockToRedis() error {
 	// 预热库存到Redis
 	for _, course := range courses {
 		Key := fmt.Sprintf("course:stock:%d", course.ID)
-		err = global.RDB.Set(ctx, Key, course.TotalStock, 0).Err()
+		err = global.RDB.Set(ctx, Key, course.Stock, 0).Err()
 		if err != nil {
 			return err
 		}
-		global.Logger.Info(fmt.Sprintf("课程%d预热成功,库存为%d", course.ID, course.TotalStock))
+		global.Logger.Info(fmt.Sprintf("课程%d预热成功,库存为%d", course.ID, course.Stock))
 	}
 	return nil
 }
