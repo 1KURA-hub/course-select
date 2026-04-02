@@ -51,11 +51,9 @@ func GetCourseById(ctx context.Context, id uint) (*model.Course, error) {
 	// 未命中缓存
 	if errors.Is(err, redis.Nil) {
 		global.Logger.Debug("Redis查询为空")
-		// 高并发下 保证同一时间只有一个协程查询数据库构建缓存
 		v, sfErr, shared := sf.Do(coursekey, func() (interface{}, error) {
 			course, dbErr := dao.GetCourseById(timeoutCtx, id)
 			if dbErr == nil {
-				// 结构体序列化为JSON存入Redis
 				courseJSON, err := json.Marshal(course)
 				if err != nil {
 					global.Logger.Error("序列化course结构体出错", zap.Error(err))
@@ -81,15 +79,15 @@ func GetCourseById(ctx context.Context, id uint) (*model.Course, error) {
 			global.Logger.Error("数据库回源出错", zap.Error(dbErr))
 			return nil, ErrSystemBusy
 		})
-		// singleflight内闭包函数结束
+
 		if sfErr != nil {
 			return nil, sfErr
 		}
-		// 记录被拦截并且共享结果的请求
+
 		if shared {
 			global.Logger.Debug("singleflight成功合并了并发请求", zap.Uint("id", id))
 		}
-		// 类型断言 还原成course结构体
+
 		sfResult := v.(*model.Course)
 		return sfResult, nil
 	}

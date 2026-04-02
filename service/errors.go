@@ -2,7 +2,6 @@ package service
 
 import "errors"
 
-// 定义部分全局业务逻辑error
 var (
 	// 用户异常
 	ErrUserExist         = errors.New("该学生已注册")

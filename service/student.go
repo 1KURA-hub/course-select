@@ -17,14 +17,12 @@ func Register(ctx context.Context, student *model.Student) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	// 通过Sid即学号查找学生
 	_, err := dao.GetBySid(timeoutCtx, student.Sid)
 	if err == nil {
 		global.Logger.Debug("学生已经存在了", zap.String("sid", student.Sid))
 		return ErrUserExist
 	}
 
-	// 如果err不是gorm查询为空 向前端返回模糊的错误原因
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrSystemBusy
 	}
@@ -44,7 +42,6 @@ func Login(ctx context.Context, Sid string, password string) (*model.Student, er
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	// 模糊返回错误原因
 	savedStu, err := dao.GetBySid(timeoutCtx, Sid)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

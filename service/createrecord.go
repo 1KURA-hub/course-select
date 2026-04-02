@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// 创建选课记录
 func CreateRecord(timeoutCtx context.Context, studentID, courseID uint) error {
 	// 开启事务 global.DB用tx
 	return global.DB.WithContext(timeoutCtx).Transaction(func(tx *gorm.DB) error {
@@ -33,16 +32,13 @@ func CreateRecord(timeoutCtx context.Context, studentID, courseID uint) error {
 			return ErrStockEmpty
 		}
 
-		// 创建选课记录实例
 		var selection = &model.Selection{
 			StudentID: studentID,
 			CourseID:  course.ID,
 		}
 
-		// 选课记录写入数据库
 		err := tx.Create(selection).Error
 		if err != nil {
-			// 判断是否是唯一索引冲突
 			if strings.Contains(err.Error(), "Duplicate entry") {
 				global.Logger.Error("重复选课", zap.Error(err))
 				return ErrRepeatSelection

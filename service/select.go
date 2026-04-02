@@ -35,7 +35,6 @@ func SelectCourse(ctx context.Context, studentID, courseID uint) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	// 选课请求key和课程库存key
 	requestkey := fmt.Sprintf("request:%d:%d", studentID, courseID)
 	stockkey := fmt.Sprintf("course:stock:%d", courseID)
 
@@ -43,7 +42,6 @@ func SelectCourse(ctx context.Context, studentID, courseID uint) error {
 	keys := []string{requestkey, stockkey}
 	args := []interface{}{1}
 
-	// Lua脚本实现不超卖 查询库存和扣减库存成为原子性操作
 	res, err := selectScript.Run(timeoutCtx, global.RDB, keys, args...).Int()
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -53,7 +51,6 @@ func SelectCourse(ctx context.Context, studentID, courseID uint) error {
 		return ErrSystemBusy
 	}
 
-	// 判断Lua脚本执行结果
 	switch res {
 	case -1:
 		if global.Logger.Core().Enabled(zap.DebugLevel) {
@@ -71,7 +68,6 @@ func SelectCourse(ctx context.Context, studentID, courseID uint) error {
 		return ErrSystemBusy
 	}
 
-	// 预扣减成功 发送消息到MQ
 	err = Send(studentID, courseID)
 	if err != nil {
 		global.RDB.Incr(timeoutCtx, stockkey)
