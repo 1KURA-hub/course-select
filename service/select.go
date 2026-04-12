@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// 全局预加载 Lua 脚本，避免每次请求都重新编译，压榨极限性能
+// 全局预加载 Lua 脚本 避免每次请求都重新编译
 var selectScript = redis.NewScript(`
 -- 1. 校验 预选课请求 是否存在
 local exists = redis.call('get', KEYS[1])
