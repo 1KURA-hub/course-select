@@ -17,9 +17,11 @@ func main() {
 	initialize.InitConfig()
 	initialize.InitLogger()
 	initialize.InitMySQL()
+
+	global.DB.AutoMigrate(&model.Student{}, &model.Course{}, &model.Selection{})
+
 	initialize.InitRedis()
 	initialize.InitBloomFilter()
-	global.DB.AutoMigrate(&model.Student{}, &model.Course{}, &model.Selection{})
 	initialize.InitRabbitMQ()
 	go func() {
 		global.Logger.Info("pprof 内网监控启动于 :6060 端口")
