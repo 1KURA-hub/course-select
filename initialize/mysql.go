@@ -21,7 +21,9 @@ func InitMySQL() {
 		m.Config,
 	)
 	var err error
-	global.DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	global.DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+		DisableForeignKeyConstraintWhenMigrating: true, // 为了性能关闭自动外键
+	})
 	if err != nil {
 		global.Logger.Fatal("初始化MySQL失败", zap.Error(err))
 	}
