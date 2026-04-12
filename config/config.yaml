@@ -1,0 +1,32 @@
+# config.yaml
+server:
+  port: 8080
+  mode: "release"
+
+mysql:
+  host: "mysql"       # Docker 底层会自动把它解析到 MySQL 容器的内网 IP
+  port: 3306
+  user: "root"
+  password: "rootpassword"
+  dbname: "go_course"
+  config: "charset=utf8mb4&parseTime=True&loc=Local"
+
+redis:
+  addr: "redis:6379"  # 自动解析到 Redis 容器
+  password: "redispassword"
+  db: 0
+
+rabbitmq:
+  host: "rabbitmq"    # 自动解析到 RabbitMQ 容器
+  port: 5672
+  user: "guest"
+  password: "guest"
+  queue_name: "redisQueue"
+
+log:
+  filename: "tmp/select.log"
+  level: "info"
+  max_size: 10
+  max_age: 30
+  max_backups: 5
+  compress: false
