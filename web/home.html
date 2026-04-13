@@ -39,12 +39,13 @@
     </section>
 
     <section class="card">
-      <h2>查询选课结果</h2>
+      <h2>选课结果（自动查询）</h2>
+      <p class="muted">点击“抢课”后会自动查询结果，这里可手动补查。</p>
       <form id="result-form" class="row">
         <input id="result-course-id" type="number" min="1" placeholder="课程ID" required />
-        <button type="submit">查询</button>
+        <button type="submit">手动查询</button>
       </form>
-      <p id="result-text" class="muted">暂无结果</p>
+      <p id="result-text" class="muted status-text">暂无结果</p>
     </section>
 
     <p id="message" class="message"></p>

@@ -5,6 +5,12 @@ const userInfoEl = document.getElementById("user-info");
 const courseBodyEl = document.getElementById("course-body");
 const resultTextEl = document.getElementById("result-text");
 const logoutBtn = document.getElementById("logout-btn");
+const activePollers = new Set();
+
+const fastPollIntervalMs = 800;
+const slowPollIntervalMs = 1500;
+const slowPollAfterMs = 6000;
+const maxPollDurationMs = 15000;
 
 function getToken() {
   return localStorage.getItem(tokenKey) || "";
@@ -79,7 +85,67 @@ async function queryResult(courseID) {
     method: "GET",
   });
 
-  resultTextEl.textContent = data.msg || "排队中";
+  const message = data.msg || "排队中";
+  resultTextEl.textContent = `课程 ${courseID}：${message}`;
+  return message;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function setSelectButtonLoading(button, isLoading) {
+  if (!button) {
+    return;
+  }
+
+  button.disabled = isLoading;
+  button.classList.toggle("is-loading", isLoading);
+  button.textContent = isLoading ? "排队中..." : "抢课";
+}
+
+function isFinalResult(message) {
+  return message === "抢课成功" || message === "抢课失败";
+}
+
+async function startAutoPolling(courseID, button) {
+  if (activePollers.has(courseID)) {
+    setMessage(`课程 ${courseID} 正在查询结果，请稍候`);
+    return;
+  }
+
+  activePollers.add(courseID);
+  setSelectButtonLoading(button, true);
+
+  const startedAt = Date.now();
+  let interval = fastPollIntervalMs;
+
+  try {
+    while (Date.now() - startedAt <= maxPollDurationMs) {
+      const message = await queryResult(courseID);
+
+      if (isFinalResult(message)) {
+        setMessage(`课程 ${courseID}${message === "抢课成功" ? "处理完成" : "处理失败"}`, message !== "抢课成功");
+        return;
+      }
+
+      if (Date.now() - startedAt > slowPollAfterMs) {
+        interval = slowPollIntervalMs;
+      }
+
+      await sleep(interval);
+    }
+
+    resultTextEl.textContent = `课程 ${courseID}：排队中（查询超时，可稍后手动查询）`;
+    setMessage("结果查询超时，请稍后手动查询", true);
+  } catch (err) {
+    setMessage(err.message, true);
+  } finally {
+    activePollers.delete(courseID);
+    setSelectButtonLoading(button, false);
+  }
 }
 
 document.getElementById("refresh-btn").addEventListener("click", loadCourses);
@@ -93,7 +159,8 @@ document.getElementById("result-form").addEventListener("submit", async (e) => {
   }
 
   try {
-    await queryResult(courseID);
+    const message = await queryResult(courseID);
+    setMessage(`课程 ${courseID}${message === "排队中" ? "仍在排队" : `查询完成：${message}`}`, false);
   } catch (err) {
     setMessage(err.message, true);
   }
@@ -114,6 +181,7 @@ courseBodyEl.addEventListener("click", async (e) => {
   try {
     await selectCourse(courseID);
     resultTextEl.textContent = `课程 ${courseID}：排队中`;
+    await startAutoPolling(courseID, target);
   } catch (err) {
     setMessage(err.message, true);
   }
