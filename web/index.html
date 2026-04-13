@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>选课系统</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>高并发选课系统</h1>
+
+    <section class="card">
+      <h2>登录</h2>
+      <form id="login-form" class="row">
+        <input id="sid" type="text" placeholder="学号 sid" required />
+        <input id="password" type="password" placeholder="密码" required />
+        <button type="submit">登录</button>
+      </form>
+      <p id="user-info" class="muted">未登录</p>
+    </section>
+
+    <section class="card">
+      <div class="row between">
+        <h2>课程列表</h2>
+        <button id="refresh-btn" type="button">刷新</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>名称</th>
+            <th>库存</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="course-body"></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>查询结果</h2>
+      <form id="result-form" class="row">
+        <input id="result-course-id" type="number" min="1" placeholder="课程ID" required />
+        <button type="submit">查询</button>
+      </form>
+      <p id="result-text" class="muted">暂无结果</p>
+    </section>
+
+    <p id="message" class="message"></p>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
+

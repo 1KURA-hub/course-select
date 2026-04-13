@@ -3,6 +3,7 @@ package router
 import (
 	"go-course/api"
 	"go-course/middleware"
+	"net/http"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -29,6 +30,13 @@ func InitRouter() *gin.Engine {
 	r.POST("/login", api.Login)
 	r.GET("/courses", api.GetCourseList)
 	r.GET("/courses/:id", middleware.Bloomfilter(), api.GetCourseById)
+	r.Static("/static", "./web/static")
+	r.GET("/", func(c *gin.Context) {
+		c.File("./web/index.html")
+	})
+	r.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"msg": "ok"})
+	})
 
 	// 路由组auth
 	auth := r.Group("/auth")
