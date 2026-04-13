@@ -60,5 +60,37 @@ go mod tidy
 # 4. 启动服务
 go run main.go
 ```
+
+## CI/CD (GitHub Actions + SSH)
+
+### 一次性配置
+
+1. 在服务器确保可执行部署脚本：
+```bash
+cd /go-course/course-select
+chmod +x scripts/deploy.sh
+```
+
+2. 在 GitHub 仓库配置 Actions Secrets：
+
+- `SSH_HOST`：服务器公网 IP
+- `SSH_USER`：服务器登录用户（如 `root`）
+- `SSH_PORT`：SSH 端口（通常 `22`）
+- `SSH_KEY`：用于登录服务器的私钥内容（整段）
+- `DEPLOY_PATH`：服务器项目路径（如 `/go-course/course-select`）
+
+3. 确保仓库 Actions 具有读写权限：
+`Settings -> Actions -> General -> Workflow permissions -> Read and write permissions`
+
+### 日常使用
+
+每次推送到 `main` 会自动：
+
+1. 执行 `go test ./...`
+2. SSH 到服务器执行 `scripts/deploy.sh`
+3. 完成 `git pull + docker compose up -d --build app + healthz检查`
+
+手动触发：`Actions -> CI-CD -> Run workflow`
+
 ## 许可证
 本项目采用 [MIT License](https://opensource.org/licenses/MIT) 开源许可证。
