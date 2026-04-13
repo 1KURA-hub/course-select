@@ -6,51 +6,40 @@
   <title>选课系统</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
-<body>
-  <main class="container">
-    <h1>高并发选课系统</h1>
-
-    <section class="card">
-      <h2>登录</h2>
-      <form id="login-form" class="row">
-        <input id="sid" type="text" placeholder="学号 sid" required />
-        <input id="password" type="password" placeholder="密码" required />
-        <button type="submit">登录</button>
-      </form>
-      <p id="user-info" class="muted">未登录</p>
+<body class="auth-page">
+  <div class="bg-glow"></div>
+  <main class="auth-layout">
+    <section class="hero card">
+      <span class="badge">选课系统</span>
+      <h1>欢迎使用选课系统</h1>
+      <p class="muted">登录后可查看课程、一键抢课并实时查询结果。</p>
+      <a class="ghost-link" href="/home">已有登录态，直接进入主页</a>
     </section>
 
-    <section class="card">
-      <div class="row between">
-        <h2>课程列表</h2>
-        <button id="refresh-btn" type="button">刷新</button>
+    <section class="card auth-card">
+      <div class="tabs">
+        <button id="tab-login" class="tab active" type="button">登录</button>
+        <button id="tab-register" class="tab" type="button">注册</button>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>名称</th>
-            <th>库存</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="course-body"></tbody>
-      </table>
-    </section>
 
-    <section class="card">
-      <h2>查询结果</h2>
-      <form id="result-form" class="row">
-        <input id="result-course-id" type="number" min="1" placeholder="课程ID" required />
-        <button type="submit">查询</button>
+      <form id="login-form" class="form active">
+        <input id="login-sid" type="text" placeholder="学号 sid" required />
+        <input id="login-password" type="password" placeholder="密码" required />
+        <button type="submit">登录并进入主页</button>
       </form>
-      <p id="result-text" class="muted">暂无结果</p>
-    </section>
 
-    <p id="message" class="message"></p>
+      <form id="register-form" class="form">
+        <input id="register-sid" type="text" placeholder="学号 sid" required />
+        <input id="register-name" type="text" placeholder="姓名" required />
+        <input id="register-password" type="password" placeholder="密码" required />
+        <button type="submit">注册账号</button>
+      </form>
+
+      <p id="auth-message" class="message"></p>
+    </section>
   </main>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/auth.js"></script>
 </body>
 </html>
 

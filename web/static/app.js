@@ -4,14 +4,12 @@ const messageEl = document.getElementById("message");
 const userInfoEl = document.getElementById("user-info");
 const courseBodyEl = document.getElementById("course-body");
 const resultTextEl = document.getElementById("result-text");
+const logoutBtn = document.getElementById("logout-btn");
 
 function getToken() {
   return localStorage.getItem(tokenKey) || "";
 }
 
-function setToken(token) {
-  localStorage.setItem(tokenKey, token);
-}
 
 function setMessage(text, isError = false) {
   messageEl.textContent = text;
@@ -67,20 +65,6 @@ async function loadCourses() {
   }
 }
 
-async function login(sid, password) {
-  const data = await request("/login", {
-    method: "POST",
-    body: JSON.stringify({ sid, password }),
-  });
-
-  if (!data.token) {
-    throw new Error("登录成功但未返回 token");
-  }
-
-  setToken(data.token);
-  userInfoEl.textContent = `已登录：${data.name || "用户"} (ID: ${data.id})`;
-  setMessage("登录成功");
-}
 
 async function selectCourse(courseID) {
   const data = await request(`/auth/select/${courseID}`, {
@@ -97,23 +81,6 @@ async function queryResult(courseID) {
 
   resultTextEl.textContent = data.msg || "排队中";
 }
-
-document.getElementById("login-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const sid = document.getElementById("sid").value.trim();
-  const password = document.getElementById("password").value;
-
-  if (!sid || !password) {
-    setMessage("请输入学号和密码", true);
-    return;
-  }
-
-  try {
-    await login(sid, password);
-  } catch (err) {
-    setMessage(err.message, true);
-  }
-});
 
 document.getElementById("refresh-btn").addEventListener("click", loadCourses);
 
@@ -152,10 +119,20 @@ courseBodyEl.addEventListener("click", async (e) => {
   }
 });
 
+logoutBtn.addEventListener("click", () => {
+  localStorage.removeItem(tokenKey);
+  localStorage.removeItem("course_select_name");
+  window.location.href = "/";
+});
+
 (function init() {
-  if (getToken()) {
-    userInfoEl.textContent = "已存在登录态，可直接抢课";
+  if (!getToken()) {
+    window.location.href = "/";
+    return;
   }
+
+  const name = localStorage.getItem("course_select_name") || "已登录用户";
+  userInfoEl.textContent = name;
   loadCourses();
 })();
 

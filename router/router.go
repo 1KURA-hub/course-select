@@ -34,6 +34,9 @@ func InitRouter() *gin.Engine {
 	r.GET("/", func(c *gin.Context) {
 		c.File("./web/index.html")
 	})
+	r.GET("/home", func(c *gin.Context) {
+		c.File("./web/home.html")
+	})
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"msg": "ok"})
 	})
