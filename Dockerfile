@@ -13,6 +13,8 @@ RUN apk add --no-cache tzdata && \
     echo "Asia/Shanghai" > /etc/timezone
 COPY --from=builder /app/main .
 COPY --from=builder /app/config/config.yaml ./config/config.yaml
+COPY --from=builder /app/web ./web
+
 EXPOSE 8080
 EXPOSE 6060
 CMD ["./main"]
