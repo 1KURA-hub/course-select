@@ -31,7 +31,7 @@ body {
 .container {
   position: relative;
   z-index: 1;
-  max-width: 980px;
+  max-width: 1024px;
   margin: 28px auto;
   padding: 0 16px;
 }
@@ -50,7 +50,7 @@ body {
 
 h1 {
   margin: 8px 0 14px;
-  font-size: 30px;
+  font-size: 32px;
 }
 
 h2 {
@@ -60,11 +60,11 @@ h2 {
 
 .card {
   border-radius: 16px;
-  padding: 18px;
+  padding: 20px;
   margin-bottom: 14px;
-  background: rgba(15, 23, 42, 0.75);
+  background: rgba(15, 23, 42, 0.78);
   border: 1px solid rgba(148, 163, 184, 0.22);
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.3);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.35);
   backdrop-filter: blur(6px);
   animation: rise 0.4s ease-out;
 }
@@ -191,16 +191,65 @@ button.is-loading {
   align-items: center;
 }
 
+.title-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.subtitle {
+  margin: -8px 0 0;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric-item {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(30, 41, 59, 0.45);
+}
+
+.metric-label {
+  display: block;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.metric-value {
+  font-size: 20px;
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 th,
 td {
   text-align: left;
   border-bottom: 1px solid rgba(148, 163, 184, 0.22);
-  padding: 9px 4px;
+  padding: 10px 6px;
+}
+
+tbody tr {
+  transition: background 0.15s ease;
+}
+
+tbody tr:hover {
+  background: rgba(30, 41, 59, 0.42);
+}
+
+td button {
+  min-width: 72px;
 }
 
 .muted {
@@ -218,7 +267,36 @@ td {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid transparent;
+}
+
+.status-badge.pending {
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.38);
+  background: rgba(245, 158, 11, 0.18);
+}
+
+.status-badge.success {
+  color: #86efac;
+  border-color: rgba(74, 222, 128, 0.4);
+  background: rgba(22, 163, 74, 0.2);
+}
+
+.status-badge.failed {
+  color: #fda4af;
+  border-color: rgba(244, 63, 94, 0.38);
+  background: rgba(190, 24, 93, 0.2);
 }
 
 .success {
@@ -238,6 +316,10 @@ td {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
+  }
+
+  .metrics {
+    grid-template-columns: 1fr;
   }
 }
 

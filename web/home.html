@@ -10,15 +10,31 @@
   <div class="bg-glow"></div>
   <main class="container">
     <header class="card topbar">
-      <div>
+      <div class="title-wrap">
         <span class="badge">选课系统</span>
-        <h1>课程主页</h1>
+        <h1>课程大厅</h1>
+        <p class="muted subtitle">高并发选课演示，支持实时抢课与结果追踪</p>
       </div>
       <div class="row">
         <span id="user-info" class="muted">未登录</span>
         <button id="logout-btn" type="button" class="danger">退出登录</button>
       </div>
     </header>
+
+    <section class="card metrics">
+      <div class="metric-item">
+        <span class="metric-label">课程总数</span>
+        <span id="course-count" class="metric-value">-</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">可抢课程</span>
+        <span id="available-count" class="metric-value">-</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">查询状态</span>
+        <span id="polling-state" class="metric-value">空闲</span>
+      </div>
+    </section>
 
     <section class="card">
       <div class="row between">
@@ -39,8 +55,11 @@
     </section>
 
     <section class="card">
-      <h2>选课结果（自动查询）</h2>
-      <p class="muted">点击“抢课”后会自动查询结果，这里可手动补查。</p>
+      <div class="row between">
+        <h2>选课结果</h2>
+        <span id="result-status" class="status-badge pending">未开始</span>
+      </div>
+      <p class="muted">点击“抢课”后自动轮询，这里也支持手动查询。</p>
       <form id="result-form" class="row">
         <input id="result-course-id" type="number" min="1" placeholder="课程ID" required />
         <button type="submit">手动查询</button>
