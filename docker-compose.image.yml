@@ -1,0 +1,5 @@
+services:
+  app:
+	image: ghcr.io/1kura-hub/course-select-app:${IMAGE_TAG:-latest}
+	pull_policy: always
+
