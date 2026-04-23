@@ -1,8 +1,10 @@
 local tokens = {}
-local file = io.open("tokens_40000.txt", "r")
+local token_file = os.getenv("TOKEN_FILE") or "tokens_200000.txt"
+local total_threads = tonumber(os.getenv("WRK_THREADS") or "4")
+local file = io.open(token_file, "r")
 
 if not file then
-    error("failed to open token file")
+    error("failed to open token file: " .. token_file)
 end
 
 for line in file:lines() do
@@ -12,13 +14,22 @@ for line in file:lines() do
 end
 file:close()
 
-local idx = 1
+local thread_counter = 0
+
+setup = function(thread)
+    thread_counter = thread_counter + 1
+    thread:set("thread_id", thread_counter)
+end
+
+init = function(args)
+    idx = thread_id
+end
 
 request = function()
     local token = tokens[idx]
-    idx = idx + 1
+    idx = idx + total_threads
     if idx > #tokens then
-        idx = 1
+        idx = thread_id
     end
 
     local headers = {
@@ -28,4 +39,3 @@ request = function()
 
     return wrk.format("POST", "/auth/select/1", headers, nil)
 end
-
