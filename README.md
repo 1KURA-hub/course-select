@@ -8,7 +8,7 @@
 
 ## 项目简介
 
-本项目是一个基于 Golang 构建的高并发秒杀/选课系统，模拟高校海量学生同时抢课的瞬时并发场景。系统围绕选课核心链路，实现了鉴权、课程缓存、Redis Lua 原子预扣库存、Redis Stream 消息表、RabbitMQ 异步削峰、MySQL 事务落库与幂等控制。
+本项目是一个基于 Golang 构建的高并发秒杀/选课系统，模拟高校海量学生同时抢课的瞬时并发场景。系统围绕选课核心链路，实现了鉴权、课程缓存、Redis Lua 原子预扣库存、Redis Stream 消息表、RabbitMQ 异步削峰、RabbitMQ 分级重试与死信队列、MySQL 事务落库与幂等控制。
 
 **技术栈：** Golang, Gin, GORM, MySQL, Redis, RabbitMQ, Zap, Docker
 
@@ -36,11 +36,19 @@
 
 生产环境中，Stream 保留长度应根据峰值入队 QPS、最大可接受下游积压时间和安全系数设置。例如峰值 3000 QPS，如果希望 RabbitMQ 或消费者故障 10 分钟内不丢本地消息，安全系数取 2，则需要保留约 `3000 * 600 * 2 = 3600000` 条消息。
 
-### 6. RabbitMQ 异步削峰与 MySQL 幂等落库
+### 6. RabbitMQ 分级重试与死信队列
 
-RabbitMQ 消费者异步创建选课记录。消费端使用 MySQL 事务扣减真实库存，并通过学生 ID + 课程 ID 唯一索引保证重复消息不会重复落库。消费者落库成功后会将 `request:{studentID}:{courseID}` 从 `pending` 更新为 `success`，并写入选课结果缓存。
+RabbitMQ 使用一个 `direct` 交换机承载选课消息路由。正常消息通过 `select.main` 路由键进入主队列，只有主队列会被业务消费者消费。消费者落库失败时，不再直接无限 `Reject(true)`，而是把失败消息重新发布到同一个交换机，并根据 `x-retry-count` 选择不同重试路由键：第一次失败进入 1 秒重试队列，第二次失败进入 5 秒重试队列，第三次失败进入 10 秒重试队列。
 
-### 7. 一致性取舍说明
+三个重试队列只负责延迟，不被业务消费者直接消费。它们通过 `x-message-ttl` 设置不同过期时间，并通过 `x-dead-letter-exchange` 和 `x-dead-letter-routing-key` 在消息过期后自动把消息路由回主队列。消费者重新消费时会继续读取消息头里的重试次数；如果超过 3 次仍失败，消息会通过 `select.dlq` 路由到死信队列，等待人工排查和补偿。
+
+消费者转发失败消息时会等待 RabbitMQ publisher confirm。只有重试消息或死信消息发布成功后，才会 `Ack` 原消息；如果发布失败，则 `Reject(true)` 保留原消息，避免在“消费失败后转发失败”的窗口丢消息。
+
+### 7. RabbitMQ 异步削峰与 MySQL 幂等落库
+
+RabbitMQ 消费者异步创建选课记录。消费端使用 MySQL 事务扣减真实库存，并通过学生 ID + 课程 ID 唯一索引保证重复消息不会重复落库。消费者落库成功后会将 `request:{studentID}:{courseID}` 从 `pending` 更新为 `success`，并写入选课结果缓存。库存不足会把请求状态更新为 `failed`，重复选课会按已成功结果处理。
+
+### 8. 一致性取舍说明
 
 Redis Stream Outbox 主要解决应用进程崩溃导致的消息丢失问题。Redis 自身故障时，可靠性取决于持久化策略。本项目在 Docker Compose 中开启 AOF，并使用 `appendfsync everysec`，在性能和可靠性之间做折中；理论上极端宕机场景仍可能丢失约 1 秒内尚未刷盘的数据。如果业务要求强一致不丢消息，可以改为 MySQL Outbox：在同一个 MySQL 事务中写业务表和消息表，再由后台任务投递 MQ。
 
