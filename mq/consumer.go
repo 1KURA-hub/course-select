@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go-course/global"
 	"go-course/service"
+	"strconv"
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
@@ -15,7 +16,7 @@ import (
 func Consumer() {
 	// 获取消息管道
 	msgs, err := global.MQChannel.Consume(
-		"redisQueue",
+		global.Settings.RabbitMQ.QueueName,
 		"",    // consumer
 		false, // auto-ack: 必须关闭自动确认 手动保证数据不丢失
 		false, // exclusive
@@ -54,8 +55,7 @@ func processSingleMessage(d amqp091.Delivery) {
 		global.Logger.Error("消息解析失败",
 			zap.String("body", string(d.Body)),
 			zap.Error(err))
-		// 消息解析失败 删除这条消息 进行下一次循环
-		d.Ack(false)
+		publishToDLQAndAck(d, "消息体反序列化失败")
 		return
 	}
 
@@ -76,9 +76,8 @@ func processSingleMessage(d amqp091.Delivery) {
 			d.Ack(false)
 			return
 		}
-		// "processing"说明别人正在处理 如果是mysql宕机 命中了业务逻辑中的错误 则会删除分布式锁
-		// 但是一些系统崩溃 无法删除分布式锁 重试的消息就会丢失 检测到"processing"必须NACK
-		d.Reject(true)
+		// processing说明别的消费者正在处理，转入延迟重试，避免立刻requeue造成空转。
+		handleRetryOrDLQ(ctx, d, "消息正在处理中")
 		return
 	}
 
@@ -118,11 +117,9 @@ func processSingleMessage(d amqp091.Delivery) {
 			zap.Uint("学生ID", msg.StudentID),
 			zap.Uint("课程ID", msg.CourseID),
 			zap.Error(err))
-		time.Sleep(1 * time.Second)
-		// 消息消费失败需要重试 删除分布式锁
+		// 消息消费失败需要重试 删除分布式锁，避免重试消息被processing状态长期拦住。
 		global.RDB.Del(ctx, msgkey)
-		// 系统出错 把这条消息重新加入消息队列
-		d.Reject(true)
+		handleRetryOrDLQ(ctx, d, "创建选课记录失败")
 		return
 	}
 
@@ -142,4 +139,138 @@ func processSingleMessage(d amqp091.Delivery) {
 		zap.Uint("学生ID", msg.StudentID),
 		zap.Uint("课程ID", msg.CourseID))
 	d.Ack(false)
+}
+
+func handleRetryOrDLQ(ctx context.Context, d amqp091.Delivery, reason string) {
+	currentRetryCount := getRetryCount(d.Headers)
+	nextRetryCount := currentRetryCount + 1
+	routingKey, retrying := retryRoutingKey(nextRetryCount)
+	if !retrying {
+		routingKey = service.DLQRoutingKey
+	}
+
+	headers := copyHeaders(d.Headers)
+	headers[service.RetryCountHeader] = nextRetryCount
+	headers[service.FailedReasonHeader] = reason
+	headers[service.FailedAtHeader] = time.Now().Format(time.RFC3339)
+
+	publishing := clonePublishing(d, headers)
+	if err := service.PublishWithConfirm(ctx, service.CourseSelectExchange, routingKey, publishing); err != nil {
+		global.Logger.Error("失败消息转发失败，保留原消息等待RabbitMQ重新投递",
+			zap.String("routingKey", routingKey),
+			zap.Int("retryCount", nextRetryCount),
+			zap.String("reason", reason),
+			zap.Error(err))
+		d.Reject(true)
+		return
+	}
+
+	if retrying {
+		global.Logger.Warn("消息处理失败，已转入延迟重试队列",
+			zap.String("routingKey", routingKey),
+			zap.Int("retryCount", nextRetryCount),
+			zap.String("reason", reason))
+	} else {
+		global.Logger.Error("消息多次重试失败，已转入死信队列",
+			zap.Int("retryCount", nextRetryCount),
+			zap.String("reason", reason))
+	}
+	d.Ack(false)
+}
+
+func publishToDLQAndAck(d amqp091.Delivery, reason string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	headers := copyHeaders(d.Headers)
+	headers[service.FailedReasonHeader] = reason
+	headers[service.FailedAtHeader] = time.Now().Format(time.RFC3339)
+
+	if err := service.PublishWithConfirm(ctx, service.CourseSelectExchange, service.DLQRoutingKey, clonePublishing(d, headers)); err != nil {
+		global.Logger.Error("死信消息转发失败，保留原消息等待RabbitMQ重新投递", zap.Error(err))
+		d.Reject(true)
+		return
+	}
+	d.Ack(false)
+}
+
+func retryRoutingKey(retryCount int) (string, bool) {
+	switch retryCount {
+	case 1:
+		return service.Retry1sRoutingKey, true
+	case 2:
+		return service.Retry5sRoutingKey, true
+	case 3:
+		return service.Retry10sRoutingKey, true
+	default:
+		return service.DLQRoutingKey, false
+	}
+}
+
+func clonePublishing(d amqp091.Delivery, headers amqp091.Table) amqp091.Publishing {
+	contentType := d.ContentType
+	if contentType == "" {
+		contentType = "application/json"
+	}
+
+	return amqp091.Publishing{
+		Headers:         headers,
+		ContentType:     contentType,
+		ContentEncoding: d.ContentEncoding,
+		DeliveryMode:    amqp091.Persistent,
+		Priority:        d.Priority,
+		CorrelationId:   d.CorrelationId,
+		ReplyTo:         d.ReplyTo,
+		Expiration:      d.Expiration,
+		MessageId:       d.MessageId,
+		Timestamp:       time.Now(),
+		Type:            d.Type,
+		UserId:          d.UserId,
+		AppId:           d.AppId,
+		Body:            d.Body,
+	}
+}
+
+func copyHeaders(headers amqp091.Table) amqp091.Table {
+	copied := amqp091.Table{}
+	for key, value := range headers {
+		copied[key] = value
+	}
+	return copied
+}
+
+func getRetryCount(headers amqp091.Table) int {
+	value, ok := headers[service.RetryCountHeader]
+	if !ok {
+		return 0
+	}
+
+	switch v := value.(type) {
+	case int:
+		return v
+	case int8:
+		return int(v)
+	case int16:
+		return int(v)
+	case int32:
+		return int(v)
+	case int64:
+		return int(v)
+	case uint:
+		return int(v)
+	case uint8:
+		return int(v)
+	case uint16:
+		return int(v)
+	case uint32:
+		return int(v)
+	case uint64:
+		return int(v)
+	case string:
+		count, err := strconv.Atoi(v)
+		if err == nil {
+			return count
+		}
+	}
+	return 0
 }
