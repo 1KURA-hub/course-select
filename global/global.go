@@ -1,8 +1,9 @@
 package global
 
 import (
-	"go-course/config"
 	"sync"
+
+	"go-course/config"
 
 	"github.com/bits-and-blooms/bloom/v3"
 	amqp "github.com/rabbitmq/amqp091-go"
