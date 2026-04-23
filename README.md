@@ -8,7 +8,7 @@
 
 ## 项目简介
 
-本项目是一个基于 Golang 构建的高并发秒杀/选课系统，模拟高校海量学生同时抢课的瞬时并发场景。系统围绕选课核心链路，实现了鉴权、课程缓存、Redis Lua 原子预扣库存、RabbitMQ 异步削峰、MySQL 事务落库与幂等控制。
+本项目是一个基于 Golang 构建的高并发秒杀/选课系统，模拟高校海量学生同时抢课的瞬时并发场景。系统围绕选课核心链路，实现了鉴权、课程缓存、Redis Lua 原子预扣库存、Redis Stream 消息表、RabbitMQ 异步削峰、MySQL 事务落库与幂等控制。
 
 **技术栈：** Golang, Gin, GORM, MySQL, Redis, RabbitMQ, Zap, Docker
 
@@ -22,13 +22,21 @@
 
 课程详情查询采用“布隆过滤器 + 缓存空值”降低缓存穿透风险，并结合 `singleflight` 合并热点课程的并发回源请求，缓解缓存击穿时的数据库压力。
 
-### 3. Redis Lua 原子预扣库存
+### 3. Redis Lua 原子预扣库存与消息表
 
-选课请求进入核心链路后，使用 Redis Lua 脚本在一次原子操作中完成重复请求判断和库存预扣减，避免高并发下的库存竞争问题。
+选课请求进入核心链路后，使用 Redis Lua 脚本在一次原子操作中完成重复请求判断、库存预扣减和 Redis Stream 消息写入。请求成功后先返回“排队中”，后台 relay 协程再从 Redis Stream 读取消息并投递 RabbitMQ。
 
-### 4. RabbitMQ 异步削峰与 MySQL 幂等落库
+### 4. Redis Stream Outbox 与 RabbitMQ 发布确认
 
-接口层完成库存预扣后，将选课消息写入 RabbitMQ，由消费者异步创建选课记录。消费端使用 MySQL 事务扣减真实库存，并通过学生 ID + 课程 ID 唯一索引保证重复消息不会重复落库。
+系统使用 Redis Stream 作为轻量 Outbox，解决“Redis 库存已扣减但应用进程未发出 MQ 消息就崩溃”的断点问题。relay 协程通过消费组读取 `select:stream`，投递 RabbitMQ 后等待 publisher confirm，只有收到 broker ack 后才执行 `XACK`。如果 relay 进程崩溃，未确认消息会留在 Stream pending list 中，后续通过 `XAUTOCLAIM` 回收并重试投递。
+
+### 5. RabbitMQ 异步削峰与 MySQL 幂等落库
+
+RabbitMQ 消费者异步创建选课记录。消费端使用 MySQL 事务扣减真实库存，并通过学生 ID + 课程 ID 唯一索引保证重复消息不会重复落库。消费者落库成功后会将 `request:{studentID}:{courseID}` 从 `pending` 更新为 `success`，并写入选课结果缓存。
+
+### 6. 一致性取舍说明
+
+Redis Stream Outbox 主要解决应用进程崩溃导致的消息丢失问题。Redis 自身故障时，可靠性取决于持久化策略。本项目在 Docker Compose 中开启 AOF，并使用 `appendfsync everysec`，在性能和可靠性之间做折中；理论上极端宕机场景仍可能丢失约 1 秒内尚未刷盘的数据。如果业务要求强一致不丢消息，可以改为 MySQL Outbox：在同一个 MySQL 事务中写业务表和消息表，再由后台任务投递 MQ。
 
 ## 部署与性能压测
 
@@ -86,7 +94,7 @@ wrk -t4 -c100 -d2s --latency -s scripts/request.lua http://127.0.0.1:8080
 | P99 | 84.91 ms |
 | 非 2xx/3xx 响应 | 0 |
 
-该场景用于验证库存充足时接口层完成 JWT 校验、Redis Lua 预扣库存、RabbitMQ 投递后的入队吞吐能力。
+该场景用于验证库存充足时接口层完成 JWT 校验、Redis Lua 预扣库存和 Redis Stream 入队后的吞吐能力。RabbitMQ 与 MySQL 的最终落库由后台 relay 和消费者异步完成。
 
 ## 快速启动 (Quick Start)
 
