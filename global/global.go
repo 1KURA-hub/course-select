@@ -2,6 +2,7 @@ package global
 
 import (
 	"go-course/config"
+	"sync"
 
 	"github.com/bits-and-blooms/bloom/v3"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -29,6 +30,7 @@ var MQChannel *amqp.Channel
 // 全局MQ发布通道和发布确认通道
 var MQPublishChannel *amqp.Channel
 var MQConfirmChan <-chan amqp.Confirmation
+var MQPublishMu sync.Mutex
 
 // 全局声明一个布隆过滤器指针
 var CourseBloomFilter *bloom.BloomFilter
