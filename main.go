@@ -31,6 +31,7 @@ func main() {
 		}
 	}()
 
+	mq.StartRelay()
 	mq.Consumer()
 
 	r := router.InitRouter()
