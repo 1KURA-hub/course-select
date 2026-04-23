@@ -42,6 +42,9 @@ func SendWithContext(ctx context.Context, studentID, courseID uint) error {
 		return errors.New("系统原因 选课失败")
 	}
 
+	global.MQPublishMu.Lock()
+	defer global.MQPublishMu.Unlock()
+
 	err = global.MQPublishChannel.PublishWithContext(
 		ctx,
 		"",
