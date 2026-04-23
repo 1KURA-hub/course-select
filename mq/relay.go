@@ -16,11 +16,13 @@ import (
 )
 
 const (
-	selectRelayGroup   = "select-relay-group"
-	relayReadBatchSize = 10
-	relayBlockTime     = 5 * time.Second
-	relayClaimIdleTime = 60 * time.Second
-	relayClaimInterval = 30 * time.Second
+	selectRelayGroup      = "select-relay-group"
+	relayReadBatchSize    = 10
+	relayBlockTime        = 5 * time.Second
+	relayClaimIdleTime    = 60 * time.Second
+	relayClaimInterval    = 30 * time.Second
+	streamTrimInterval   = time.Minute
+	selectStreamMaxLength = 500000
 )
 
 // StartRelay 启动 Redis Stream -> RabbitMQ 的中继投递协程。
@@ -35,6 +37,7 @@ func StartRelay() {
 
 	go relayNewMessages(consumerName)
 	go reclaimPendingMessages(consumerName)
+	go trimSelectStream()
 }
 
 func ensureRelayGroup(ctx context.Context) error {
@@ -106,6 +109,45 @@ func reclaimPendingMessages(consumerName string) {
 			}
 			start = next
 		}
+	}
+}
+
+func trimSelectStream() {
+	ticker := time.NewTicker(streamTrimInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		trimCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		pending, err := global.RDB.XPending(trimCtx, service.SelectStreamKey, selectRelayGroup).Result()
+		if err != nil {
+			cancel()
+			global.Logger.Error("查询Redis Stream pending状态失败", zap.Error(err))
+			continue
+		}
+
+		if pending.Count == 0 {
+			err = global.RDB.Do(trimCtx, "XTRIM", service.SelectStreamKey, "MAXLEN", "~", selectStreamMaxLength).Err()
+			cancel()
+			if err != nil {
+				global.Logger.Error("按长度裁剪Redis Stream失败", zap.Error(err))
+				continue
+			}
+			global.Logger.Debug("Redis Stream按长度裁剪完成", zap.Int64("maxLen", selectStreamMaxLength))
+			continue
+		}
+
+		if pending.Lower == "" || pending.Lower == "0-0" {
+			cancel()
+			continue
+		}
+
+		err = global.RDB.Do(trimCtx, "XTRIM", service.SelectStreamKey, "MINID", "~", pending.Lower).Err()
+		cancel()
+		if err != nil {
+			global.Logger.Error("按最老pending消息裁剪Redis Stream失败", zap.String("oldestPendingID", pending.Lower), zap.Error(err))
+			continue
+		}
+		global.Logger.Debug("Redis Stream按最老pending消息裁剪完成", zap.String("oldestPendingID", pending.Lower))
 	}
 }
 
