@@ -30,11 +30,17 @@
 
 系统使用 Redis Stream 作为轻量 Outbox，解决“Redis 库存已扣减但应用进程未发出 MQ 消息就崩溃”的断点问题。relay 协程通过消费组读取 `select:stream`，投递 RabbitMQ 后等待 publisher confirm，只有收到 broker ack 后才执行 `XACK`。如果 relay 进程崩溃，未确认消息会留在 Stream pending list 中，后续通过 `XAUTOCLAIM` 回收并重试投递。
 
-### 5. RabbitMQ 异步削峰与 MySQL 幂等落库
+### 5. Redis Stream 裁剪与内存控制
+
+`XACK` 只会移除消费组里的 pending 记录，不会删除 Stream 消息本体。为了避免 `select:stream` 无限增长，relay 会启动后台裁剪协程，每分钟执行一次 `XTRIM`。没有 pending 消息时，按 `MAXLEN ~ 500000` 保留最近约 50 万条消息；存在 pending 消息时，先查询最老 pending 消息 ID，再按 `MINID ~ oldestPendingID` 只裁剪它之前的历史消息，避免删除仍可能通过 `XAUTOCLAIM` 重试的消息。
+
+生产环境中，Stream 保留长度应根据峰值入队 QPS、最大可接受下游积压时间和安全系数设置。例如峰值 3000 QPS，如果希望 RabbitMQ 或消费者故障 10 分钟内不丢本地消息，安全系数取 2，则需要保留约 `3000 * 600 * 2 = 3600000` 条消息。
+
+### 6. RabbitMQ 异步削峰与 MySQL 幂等落库
 
 RabbitMQ 消费者异步创建选课记录。消费端使用 MySQL 事务扣减真实库存，并通过学生 ID + 课程 ID 唯一索引保证重复消息不会重复落库。消费者落库成功后会将 `request:{studentID}:{courseID}` 从 `pending` 更新为 `success`，并写入选课结果缓存。
 
-### 6. 一致性取舍说明
+### 7. 一致性取舍说明
 
 Redis Stream Outbox 主要解决应用进程崩溃导致的消息丢失问题。Redis 自身故障时，可靠性取决于持久化策略。本项目在 Docker Compose 中开启 AOF，并使用 `appendfsync everysec`，在性能和可靠性之间做折中；理论上极端宕机场景仍可能丢失约 1 秒内尚未刷盘的数据。如果业务要求强一致不丢消息，可以改为 MySQL Outbox：在同一个 MySQL 事务中写业务表和消息表，再由后台任务投递 MQ。
 
