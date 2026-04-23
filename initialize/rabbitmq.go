@@ -11,28 +11,24 @@ import (
 // 初始化RabbitMQ连接
 func InitRabbitMQ() {
 	mqConf := global.Settings.RabbitMQ
-	// 2. 动态拼接 DSN (Data Source Name)
-	// 格式: amqp://user:password@host:port/
 	dsn := fmt.Sprintf("amqp://%s:%s@%s:%d/",
 		mqConf.User,
 		mqConf.Password,
 		mqConf.Host,
 		mqConf.Port,
 	)
-	// 建立服务器与MQ的连接
+
 	conn, err := amqp.Dial(dsn)
 	if err != nil {
 		global.Logger.Fatal("连接RabbitMQ失败", zap.Error(err))
 	}
+	global.MQConn = conn
 
-	// 声明通道
 	global.MQChannel, err = conn.Channel()
 	if err != nil {
-		global.Logger.Fatal("通道声明失败", zap.Error(err))
-		panic(err)
+		global.Logger.Fatal("消费通道声明失败", zap.Error(err))
 	}
 
-	// 声明队列
 	_, err = global.MQChannel.QueueDeclare(
 		mqConf.QueueName,
 		true,
@@ -42,7 +38,18 @@ func InitRabbitMQ() {
 		nil,
 	)
 	if err != nil {
-		global.Logger.Fatal("队伍声明失败", zap.Error(err))
+		global.Logger.Fatal("队列声明失败", zap.Error(err))
 	}
+
+	global.MQPublishChannel, err = conn.Channel()
+	if err != nil {
+		global.Logger.Fatal("发布通道声明失败", zap.Error(err))
+	}
+
+	if err = global.MQPublishChannel.Confirm(false); err != nil {
+		global.Logger.Fatal("发布确认模式开启失败", zap.Error(err))
+	}
+	global.MQConfirmChan = global.MQPublishChannel.NotifyPublish(make(chan amqp.Confirmation, 1))
+
 	global.Logger.Info("初始化RabbitMQ成功")
 }
