@@ -77,7 +77,7 @@ func processSingleMessage(d amqp091.Delivery) {
 			return
 		}
 		// processing说明别的消费者正在处理，转入延迟重试，避免立刻requeue造成空转。
-		handleRetryOrDLQ(ctx, d, "消息正在处理中")
+		handleRetryOrDLQ(d, "消息正在处理中")
 		return
 	}
 
@@ -119,7 +119,7 @@ func processSingleMessage(d amqp091.Delivery) {
 			zap.Error(err))
 		// 消息消费失败需要重试 删除分布式锁，避免重试消息被processing状态长期拦住。
 		global.RDB.Del(ctx, msgkey)
-		handleRetryOrDLQ(ctx, d, "创建选课记录失败")
+		handleRetryOrDLQ(d, "创建选课记录失败")
 		return
 	}
 
@@ -141,7 +141,7 @@ func processSingleMessage(d amqp091.Delivery) {
 	d.Ack(false)
 }
 
-func handleRetryOrDLQ(ctx context.Context, d amqp091.Delivery, reason string) {
+func handleRetryOrDLQ(d amqp091.Delivery, reason string) {
 	currentRetryCount := getRetryCount(d.Headers)
 	nextRetryCount := currentRetryCount + 1
 	routingKey, retrying := retryRoutingKey(nextRetryCount)
@@ -153,6 +153,9 @@ func handleRetryOrDLQ(ctx context.Context, d amqp091.Delivery, reason string) {
 	headers[service.RetryCountHeader] = nextRetryCount
 	headers[service.FailedReasonHeader] = reason
 	headers[service.FailedAtHeader] = time.Now().Format(time.RFC3339)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	publishing := clonePublishing(d, headers)
 	if err := service.PublishWithConfirm(ctx, service.CourseSelectExchange, routingKey, publishing); err != nil {
