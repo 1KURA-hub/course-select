@@ -36,61 +36,62 @@ RabbitMQ 主队列负责异步削峰，消费者失败时不直接无限 requeue
 
 ## 部署与性能压测
 
-基于 Docker Compose 部署在 2C4G 云服务器，使用 `wrk` 对核心选课接口进行压测。压测前会清空 RabbitMQ 队列、刷新 Redis、重置 MySQL 课程库存，并重新启动应用以加载最新库存。
+基于 Docker Compose 部署在 2C4G 云服务器，使用 `wrk` 对核心选课接口进行压测。压测前会清空 RabbitMQ 队列、刷新 Redis、清空 MySQL 选课记录、重置课程库存，并重新启动应用以加载最新库存。
 
-### 场景一：库存有限，快速拒绝超额请求
+压测脚本使用唯一 token 分片策略：`wrk -t4` 下 4 个线程按 `1,5,9...`、`2,6,10...`、`3,7,11...`、`4,8,12...` 分别读取 token，避免多线程重复使用同一批学生 ID 导致结果失真。
 
-1 万独立 JWT Token 争抢 1000 库存，200 并发，持续 10 秒：
+### 场景一：库存充足，验证成功入队吞吐
+
+20 万独立 JWT Token，课程库存重置为 200000，100 并发，持续 30 秒：
 
 ```bash
-wrk -t4 -c200 -d10s --latency -s scripts/post.lua http://127.0.0.1:8080
+go run scripts/gen_tokens.go 200000
+WRK_THREADS=4 TOKEN_FILE=tokens_200000.txt wrk -t4 -c100 -d30s --latency -s scripts/request.lua http://127.0.0.1:8080
 ```
 
 | 指标 | 结果 |
 | --- | --- |
-| 总请求数 | 57174 |
-| QPS | 5673.92 req/s |
-| 平均延迟 | 35.47 ms |
-| P50 | 34.58 ms |
-| P75 | 43.93 ms |
-| P90 | 53.19 ms |
-| P99 | 80.32 ms |
-| 非 2xx/3xx 响应 | 56174 |
-
-该场景下成功请求数量与库存规模一致，其余请求在库存耗尽后被快速拒绝，主要用于验证 Redis Lua 预扣库存链路在高并发下的稳定性。
-
-### 场景二：库存充足，验证入队吞吐
-
-4 万独立 JWT Token，课程库存重置为 12000，100 并发，持续 2 秒：
-
-```bash
-go run scripts/gen_tokens.go 40000
-
-docker compose stop app
-docker compose exec rabbitmq rabbitmqctl purge_queue redisQueue
-docker compose exec redis redis-cli -a redispassword FLUSHALL
-docker compose exec mysql mysql -uroot -prootpassword -D go_course -e "
-TRUNCATE TABLE selections;
-UPDATE courses SET stock = 12000 WHERE id = 1;
-"
-docker compose start app
-sleep 30
-
-wrk -t4 -c100 -d2s --latency -s scripts/request.lua http://127.0.0.1:8080
-```
-
-| 指标 | 结果 |
-| --- | --- |
-| 总请求数 | 6817 |
-| QPS | 3258.04 req/s |
-| 平均延迟 | 32.06 ms |
-| P50 | 29.08 ms |
-| P75 | 41.75 ms |
-| P90 | 53.39 ms |
-| P99 | 84.91 ms |
+| 总请求数 | 150814 |
+| QPS | 5017.05 req/s |
+| 平均延迟 | 20.44 ms |
+| P50 | 19.36 ms |
+| P75 | 25.17 ms |
+| P90 | 31.68 ms |
+| P99 | 47.67 ms |
 | 非 2xx/3xx 响应 | 0 |
+| HTTP 200 | 150814 |
+| HTTP 400 | 0 |
+| 其他状态码 | 0 |
 
-该场景用于验证库存充足时接口层完成 JWT 校验、Redis Lua 预扣库存和 Redis Stream 入队后的吞吐能力。RabbitMQ 与 MySQL 的最终落库由后台 relay 和消费者异步完成。
+该场景用于验证库存充足时接口层完成 JWT 校验、Redis Lua 预扣库存和 Redis Stream 入队后的吞吐能力。RabbitMQ 与 MySQL 的最终落库由后台 relay 和消费者异步完成，因此该压测结果衡量的是“成功入队链路”，不是同步落库链路。
+
+### 场景二：库存有限，快速拒绝超额请求
+
+7 万独立 JWT Token 争抢 1000 库存，200 并发，持续 10 秒：
+
+```bash
+go run scripts/gen_tokens.go 70000
+WRK_THREADS=4 TOKEN_FILE=tokens_70000.txt wrk -t4 -c200 -d10s --latency -s scripts/post.lua http://127.0.0.1:8080
+```
+
+| 指标 | 结果 |
+| --- | --- |
+| 总请求数 | 58865 |
+| QPS | 5828.12 req/s |
+| 平均延迟 | 34.75 ms |
+| P50 | 33.34 ms |
+| P75 | 43.00 ms |
+| P90 | 52.95 ms |
+| P99 | 77.77 ms |
+| 非 2xx/3xx 响应 | 57865 |
+| HTTP 200 | 1000 |
+| HTTP 400 | 57865 |
+| 其他状态码 | 0 |
+| MySQL 最终落库 | 1000 |
+| 课程最终库存 | 0 |
+| RabbitMQ 重试队列 / DLQ | 0 |
+
+该场景下成功请求数量与库存规模一致，其余请求在库存耗尽后被 Redis Lua 快速拒绝，用于验证高并发下不超卖、库存耗尽快速失败和异步落库最终一致性。两个压测场景的并发参数和业务路径不同，不能直接用延迟数值横向比较。
 
 ## 快速启动 (Quick Start)
 
