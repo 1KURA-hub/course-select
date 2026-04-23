@@ -12,6 +12,19 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	CourseSelectExchange = "course.select.exchange"
+	MainRoutingKey       = "select.main"
+	Retry1sRoutingKey    = "select.retry.1s"
+	Retry5sRoutingKey    = "select.retry.5s"
+	Retry10sRoutingKey   = "select.retry.10s"
+	DLQRoutingKey        = "select.dlq"
+
+	RetryCountHeader  = "x-retry-count"
+	FailedReasonHeader = "x-failed-reason"
+	FailedAtHeader     = "x-failed-at"
+)
+
 type Message struct {
 	StudentID uint
 	CourseID  uint
@@ -24,7 +37,7 @@ func Send(studentID, courseID uint) error {
 	return SendWithContext(ctx, studentID, courseID)
 }
 
-// SendWithContext 发送消息到MQ，并等待 RabbitMQ publisher confirm。
+// SendWithContext 发送消息到主队列，并等待 RabbitMQ publisher confirm。
 func SendWithContext(ctx context.Context, studentID, courseID uint) error {
 	var message = Message{
 		StudentID: studentID,
@@ -37,6 +50,16 @@ func SendWithContext(ctx context.Context, studentID, courseID uint) error {
 		return errors.New("系统原因 选课失败")
 	}
 
+	return PublishWithConfirm(ctx, CourseSelectExchange, MainRoutingKey, amqp.Publishing{
+		ContentType:  "application/json",
+		DeliveryMode: amqp.Persistent,
+		MessageId:    fmt.Sprintf("%d:%d:%d", studentID, courseID, time.Now().UnixNano()),
+		Body:         body,
+	})
+}
+
+// PublishWithConfirm 发布消息，并等待 RabbitMQ publisher confirm。
+func PublishWithConfirm(ctx context.Context, exchange, routingKey string, publishing amqp.Publishing) error {
 	if global.MQPublishChannel == nil || global.MQConfirmChan == nil {
 		global.Logger.Error("MQ发布通道未初始化")
 		return errors.New("系统原因 选课失败")
@@ -45,21 +68,16 @@ func SendWithContext(ctx context.Context, studentID, courseID uint) error {
 	global.MQPublishMu.Lock()
 	defer global.MQPublishMu.Unlock()
 
-	err = global.MQPublishChannel.PublishWithContext(
+	err := global.MQPublishChannel.PublishWithContext(
 		ctx,
-		"",
-		global.Settings.RabbitMQ.QueueName,
+		exchange,
+		routingKey,
 		false,
 		false,
-		amqp.Publishing{
-			ContentType:  "application/json",
-			DeliveryMode: amqp.Persistent,
-			MessageId:    fmt.Sprintf("%d:%d:%d", studentID, courseID, time.Now().UnixNano()),
-			Body:         body,
-		},
+		publishing,
 	)
 	if err != nil {
-		global.Logger.Error("消息发布失败", zap.Error(err))
+		global.Logger.Error("消息发布失败", zap.String("exchange", exchange), zap.String("routingKey", routingKey), zap.Error(err))
 		return errors.New("系统原因 选课失败")
 	}
 
