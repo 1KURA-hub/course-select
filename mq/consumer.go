@@ -3,7 +3,6 @@ package mq
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"go-course/global"
 	"go-course/service"
 	"strconv"
@@ -32,24 +31,20 @@ func Consumer() {
 	WorkerNum := 10
 
 	for i := 0; i < WorkerNum; i++ {
-		// 如果不传参数 闭包捕获循环变量 i 相当于引用同一个地址 最后i相同
 		go func(workerID int) {
 			global.Logger.Info("消费者Worker启动", zap.Int("workerID", workerID))
 
 			for d := range msgs {
-				// 将单次消息处理抽离为独立函数 防止协程意外退出和内存泄漏
 				processSingleMessage(d)
 			}
 		}(i)
 	}
 }
 
-// 抽取出的单条消息处理逻辑
 func processSingleMessage(d amqp091.Delivery) {
-	global.Logger.Info("收到MQ消息", zap.String("msgID:", d.MessageId))
+	global.Logger.Info("收到MQ消息", zap.String("msgID", d.MessageId))
 	var msg service.Message
 
-	//  反序列化消息body
 	err := json.Unmarshal(d.Body, &msg)
 	if err != nil {
 		global.Logger.Error("消息解析失败",
@@ -60,55 +55,53 @@ func processSingleMessage(d amqp091.Delivery) {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel() // 独立函数配合 defer，完美解决 Context 内存泄漏问题
+	defer cancel()
 
-	key := fmt.Sprintf("res:%d:%d", msg.StudentID, msg.CourseID)
-	msgkey := fmt.Sprintf("msg:%d:%d", msg.StudentID, msg.CourseID)
-	requestkey := fmt.Sprintf("request:%d:%d", msg.StudentID, msg.CourseID)
+	msgkey := service.MessageKey(msg.StudentID, msg.CourseID)
 
-	// Redis分布式锁保证消息不重复
-	exists := global.RDB.SetNX(ctx, msgkey, "processing", time.Second*10)
+	exists := global.RDB.SetNX(ctx, msgkey, "processing", 10*time.Second)
+	if err := exists.Err(); err != nil {
+		global.Logger.Error("消息锁写入Redis失败", zap.Error(err))
+		handleRetryOrDLQ(d, "消息锁写入Redis失败")
+		return
+	}
+
 	if !exists.Val() {
-		// 抢锁失败 确认锁的value
 		status, _ := global.RDB.Get(ctx, msgkey).Result()
 		if status == "success" {
-			// 别人已经成功落库了 确认删除消息
 			d.Ack(false)
 			return
 		}
-		// processing说明别的消费者正在处理，转入延迟重试，避免立刻requeue造成空转。
 		handleRetryOrDLQ(d, "消息正在处理中")
 		return
 	}
 
-	// 数据库创建选课记录封装到了一个事务里面 并对TotalStock库存加锁 有错误则回滚
 	err = service.CreateRecord(ctx, msg.StudentID, msg.CourseID)
 	if err != nil {
-
 		if err == service.ErrStockEmpty {
 			if global.Logger.Core().Enabled(zap.DebugLevel) {
-				global.Logger.Debug("库存不足",
-					zap.Uint("课程ID", msg.CourseID))
+				global.Logger.Debug("库存不足", zap.Uint("课程ID", msg.CourseID))
 			}
-			// 消息消费成功 更新分布式锁value
-			global.RDB.Set(ctx, msgkey, "success", time.Hour)
-			global.RDB.Set(ctx, requestkey, "failed", 24*time.Hour)
-			global.RDB.Set(ctx, key, -1, time.Minute)
-			// 库存不足时 删除消息 进入下一次循环
+			if cacheErr := service.MarkSelectionFailed(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+				global.Logger.Warn("库存不足结果写入Redis失败，按最终失败直接确认消息",
+					zap.Uint("studentID", msg.StudentID),
+					zap.Uint("courseID", msg.CourseID),
+					zap.Error(cacheErr))
+			}
 			d.Ack(false)
 			return
 		}
 
-		// 重复选课 两个消费者同时收到消息导致
 		if err == service.ErrRepeatSelection {
 			global.Logger.Warn("并发重复选课，已拦截",
 				zap.Uint("uid", msg.StudentID),
 				zap.Uint("cid", msg.CourseID))
-			// 重复选课说明MySQL已经有最终成功记录，更新请求状态和结果缓存
-			global.RDB.Set(ctx, msgkey, "success", time.Hour)
-			global.RDB.Set(ctx, requestkey, "success", 24*time.Hour)
-			global.RDB.Set(ctx, key, 1, time.Minute)
-			// 确认消费 不要重试了
+			if cacheErr := service.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+				global.Logger.Warn("重复选课成功结果写入Redis失败，依赖MySQL最终事实兜底",
+					zap.Uint("studentID", msg.StudentID),
+					zap.Uint("courseID", msg.CourseID),
+					zap.Error(cacheErr))
+			}
 			d.Ack(false)
 			return
 		}
@@ -117,22 +110,16 @@ func processSingleMessage(d amqp091.Delivery) {
 			zap.Uint("学生ID", msg.StudentID),
 			zap.Uint("课程ID", msg.CourseID),
 			zap.Error(err))
-		// 消息消费失败需要重试 删除分布式锁，避免重试消息被processing状态长期拦住。
 		global.RDB.Del(ctx, msgkey)
 		handleRetryOrDLQ(d, "创建选课记录失败")
 		return
 	}
 
-	// 消息消费成功 数据库正常扣减
-	global.RDB.Set(ctx, msgkey, "success", time.Hour)
-	global.RDB.Set(ctx, requestkey, "success", 24*time.Hour)
-
-	err = global.RDB.Set(ctx, key, 1, 5*time.Minute).Err()
-	// 不能用defer 因为这里的for range是一个死循环 完成一次Redis操作直接cancel
-	if err != nil {
-		global.Logger.Error("Redis出错", zap.String("key", key), zap.Error(err))
-		d.Ack(false)
-		return
+	if cacheErr := service.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+		global.Logger.Warn("选课成功结果写入Redis失败，依赖MySQL最终事实兜底",
+			zap.Uint("studentID", msg.StudentID),
+			zap.Uint("courseID", msg.CourseID),
+			zap.Error(cacheErr))
 	}
 
 	global.Logger.Info("选课记录创建成功",
