@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -62,7 +63,7 @@ func main() {
 func compensateOne(d amqp091.Delivery) error {
 	var msg service.Message
 	if err := json.Unmarshal(d.Body, &msg); err != nil {
-		global.Logger.Error("死信消息反序列化失败，直接丢弃", globalZapError(err))
+		global.Logger.Error("死信消息反序列化失败，直接丢弃", zap.Error(err))
 		return nil
 	}
 
@@ -71,7 +72,7 @@ func compensateOne(d amqp091.Delivery) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if cacheErr := service.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
-			global.Logger.Warn("死信补偿命中已落库记录，但Redis结果写回失败", globalZapError(cacheErr))
+			global.Logger.Warn("死信补偿命中已落库记录，但Redis结果写回失败", zap.Error(cacheErr))
 		}
 		fmt.Printf("跳过已落库消息 student=%d course=%d\n", msg.StudentID, msg.CourseID)
 		return nil
@@ -89,13 +90,9 @@ func compensateOne(d amqp091.Delivery) error {
 	}
 
 	if cacheErr := service.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
-		global.Logger.Warn("死信补偿落库成功，但Redis结果写回失败", globalZapError(cacheErr))
+		global.Logger.Warn("死信补偿落库成功，但Redis结果写回失败", zap.Error(cacheErr))
 	}
 
 	fmt.Printf("补偿成功 student=%d course=%d\n", msg.StudentID, msg.CourseID)
 	return nil
-}
-
-func globalZapError(err error) interface{} {
-	return map[string]string{"error": err.Error()}
 }
