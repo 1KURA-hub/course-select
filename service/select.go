@@ -30,9 +30,9 @@ if not stock or tonumber(stock) < tonumber(ARGV[1]) then
     return 0 -- ErrStockEmpty
 end
 
--- 3. 原子完成库存预扣、请求置为待处理、写入 Redis Stream 消息表
+-- 3. 原子完成库存预扣、写入防重标记、写入 Redis Stream 消息表
 redis.call('decrby', KEYS[2], tonumber(ARGV[1]))
-redis.call('set', KEYS[1], 'pending', 'EX', tonumber(ARGV[4]))
+redis.call('set', KEYS[1], '1', 'EX', tonumber(ARGV[4]))
 redis.call('xadd', KEYS[3], '*', 'student_id', ARGV[2], 'course_id', ARGV[3])
 return 1 -- 成功
 `)
@@ -42,7 +42,7 @@ func SelectCourse(ctx context.Context, studentID, courseID uint) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	requestkey := fmt.Sprintf("request:%d:%d", studentID, courseID)
+	requestkey := RequestKey(studentID, courseID)
 	stockkey := fmt.Sprintf("course:stock:%d", courseID)
 
 	keys := []string{requestkey, stockkey, SelectStreamKey}
