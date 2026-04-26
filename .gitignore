@@ -13,3 +13,4 @@
 
 *.log
 tokens_10000.txt
+.DS_Store

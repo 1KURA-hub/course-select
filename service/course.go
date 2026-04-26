@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"go-course/dao"
 	"go-course/global"
 	"go-course/model"
+	mysqlrepo "go-course/repository/mysql"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -21,7 +21,7 @@ var sf singleflight.Group
 func GetCourseList(ctx context.Context) ([]model.Course, error) {
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*2)
 	defer cancel()
-	return dao.GetCourseList(timeoutCtx)
+	return mysqlrepo.GetCourseList(timeoutCtx)
 }
 
 func GetCourseById(ctx context.Context, id uint) (*model.Course, error) {
@@ -52,7 +52,7 @@ func GetCourseById(ctx context.Context, id uint) (*model.Course, error) {
 	if errors.Is(err, redis.Nil) {
 		global.Logger.Debug("Redis查询为空")
 		v, sfErr, shared := sf.Do(coursekey, func() (interface{}, error) {
-			course, dbErr := dao.GetCourseById(timeoutCtx, id)
+			course, dbErr := mysqlrepo.GetCourseById(timeoutCtx, id)
 			if dbErr == nil {
 				courseJSON, err := json.Marshal(course)
 				if err != nil {

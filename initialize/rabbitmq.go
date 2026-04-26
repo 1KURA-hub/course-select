@@ -3,7 +3,7 @@ package initialize
 import (
 	"fmt"
 	"go-course/global"
-	"go-course/service"
+	"go-course/mq"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
@@ -49,7 +49,7 @@ func InitRabbitMQ() {
 
 func declareCourseSelectTopology(ch *amqp.Channel, mainQueue string) error {
 	if err := ch.ExchangeDeclare(
-		service.CourseSelectExchange,
+		mq.CourseSelectExchange,
 		"direct",
 		true,
 		false,
@@ -60,7 +60,7 @@ func declareCourseSelectTopology(ch *amqp.Channel, mainQueue string) error {
 		return err
 	}
 
-	if err := declareAndBindQueue(ch, mainQueue, service.MainRoutingKey, nil); err != nil {
+	if err := declareAndBindQueue(ch, mainQueue, mq.MainRoutingKey, nil); err != nil {
 		return err
 	}
 
@@ -69,23 +69,23 @@ func declareCourseSelectTopology(ch *amqp.Channel, mainQueue string) error {
 		routingKey string
 		ttl        int32
 	}{
-		{name: mainQueue + ".retry.1s", routingKey: service.Retry1sRoutingKey, ttl: 1000},
-		{name: mainQueue + ".retry.5s", routingKey: service.Retry5sRoutingKey, ttl: 5000},
-		{name: mainQueue + ".retry.10s", routingKey: service.Retry10sRoutingKey, ttl: 10000},
+		{name: mainQueue + ".retry.1s", routingKey: mq.Retry1sRoutingKey, ttl: 1000},
+		{name: mainQueue + ".retry.5s", routingKey: mq.Retry5sRoutingKey, ttl: 5000},
+		{name: mainQueue + ".retry.10s", routingKey: mq.Retry10sRoutingKey, ttl: 10000},
 	}
 
 	for _, queue := range retryQueues {
 		args := amqp.Table{
 			"x-message-ttl":             queue.ttl,
-			"x-dead-letter-exchange":    service.CourseSelectExchange,
-			"x-dead-letter-routing-key": service.MainRoutingKey,
+			"x-dead-letter-exchange":    mq.CourseSelectExchange,
+			"x-dead-letter-routing-key": mq.MainRoutingKey,
 		}
 		if err := declareAndBindQueue(ch, queue.name, queue.routingKey, args); err != nil {
 			return err
 		}
 	}
 
-	return declareAndBindQueue(ch, mainQueue+".dlq", service.DLQRoutingKey, nil)
+	return declareAndBindQueue(ch, mainQueue+".dlq", mq.DLQRoutingKey, nil)
 }
 
 func declareAndBindQueue(ch *amqp.Channel, queueName, routingKey string, args amqp.Table) error {
@@ -104,7 +104,7 @@ func declareAndBindQueue(ch *amqp.Channel, queueName, routingKey string, args am
 	return ch.QueueBind(
 		queueName,
 		routingKey,
-		service.CourseSelectExchange,
+		mq.CourseSelectExchange,
 		false,
 		nil,
 	)

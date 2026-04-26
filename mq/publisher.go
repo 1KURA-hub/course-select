@@ -1,4 +1,4 @@
-package service
+package mq
 
 import (
 	"context"
@@ -20,7 +20,7 @@ const (
 	Retry10sRoutingKey   = "select.retry.10s"
 	DLQRoutingKey        = "select.dlq"
 
-	RetryCountHeader  = "x-retry-count"
+	RetryCountHeader   = "x-retry-count"
 	FailedReasonHeader = "x-failed-reason"
 	FailedAtHeader     = "x-failed-at"
 )

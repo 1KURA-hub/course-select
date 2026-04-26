@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"go-course/dao"
 	"go-course/global"
 	"go-course/initialize"
+	"go-course/mq"
+	mysqlrepo "go-course/repository/mysql"
+	redisrepo "go-course/repository/redis"
 	"go-course/service"
 	"time"
 
@@ -61,17 +63,17 @@ func main() {
 }
 
 func compensateOne(d amqp091.Delivery) error {
-	var msg service.Message
+	var msg mq.Message
 	if err := json.Unmarshal(d.Body, &msg); err != nil {
 		global.Logger.Error("死信消息反序列化失败，直接丢弃", zap.Error(err))
 		return nil
 	}
 
-	selection, err := dao.GetSelectionBySIDAndCID(msg.StudentID, msg.CourseID)
+	selection, err := mysqlrepo.GetSelectionBySIDAndCID(msg.StudentID, msg.CourseID)
 	if err == nil && selection != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if cacheErr := service.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+		if cacheErr := redisrepo.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
 			global.Logger.Warn("死信补偿命中已落库记录，但Redis结果写回失败", zap.Error(cacheErr))
 		}
 		fmt.Printf("跳过已落库消息 student=%d course=%d\n", msg.StudentID, msg.CourseID)
@@ -89,7 +91,7 @@ func compensateOne(d amqp091.Delivery) error {
 		return err
 	}
 
-	if cacheErr := service.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+	if cacheErr := redisrepo.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
 		global.Logger.Warn("死信补偿落库成功，但Redis结果写回失败", zap.Error(cacheErr))
 	}
 

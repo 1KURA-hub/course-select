@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"go-course/global"
+	redisrepo "go-course/repository/redis"
 	"go-course/service"
 	"strconv"
 	"time"
@@ -43,7 +44,7 @@ func Consumer() {
 
 func processSingleMessage(d amqp091.Delivery) {
 	global.Logger.Info("收到MQ消息", zap.String("msgID", d.MessageId))
-	var msg service.Message
+	var msg Message
 
 	err := json.Unmarshal(d.Body, &msg)
 	if err != nil {
@@ -57,7 +58,7 @@ func processSingleMessage(d amqp091.Delivery) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	msgkey := service.MessageKey(msg.StudentID, msg.CourseID)
+	msgkey := redisrepo.MessageKey(msg.StudentID, msg.CourseID)
 
 	exists := global.RDB.SetNX(ctx, msgkey, "processing", 10*time.Second)
 	if err := exists.Err(); err != nil {
@@ -82,7 +83,7 @@ func processSingleMessage(d amqp091.Delivery) {
 			if global.Logger.Core().Enabled(zap.DebugLevel) {
 				global.Logger.Debug("库存不足", zap.Uint("课程ID", msg.CourseID))
 			}
-			if cacheErr := service.MarkSelectionFailed(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+			if cacheErr := redisrepo.MarkSelectionFailed(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
 				global.Logger.Warn("库存不足结果写入Redis失败，按最终失败直接确认消息",
 					zap.Uint("studentID", msg.StudentID),
 					zap.Uint("courseID", msg.CourseID),
@@ -96,7 +97,7 @@ func processSingleMessage(d amqp091.Delivery) {
 			global.Logger.Warn("并发重复选课，已拦截",
 				zap.Uint("uid", msg.StudentID),
 				zap.Uint("cid", msg.CourseID))
-			if cacheErr := service.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+			if cacheErr := redisrepo.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
 				global.Logger.Warn("重复选课成功结果写入Redis失败，依赖MySQL最终事实兜底",
 					zap.Uint("studentID", msg.StudentID),
 					zap.Uint("courseID", msg.CourseID),
@@ -115,7 +116,7 @@ func processSingleMessage(d amqp091.Delivery) {
 		return
 	}
 
-	if cacheErr := service.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+	if cacheErr := redisrepo.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
 		global.Logger.Warn("选课成功结果写入Redis失败，依赖MySQL最终事实兜底",
 			zap.Uint("studentID", msg.StudentID),
 			zap.Uint("courseID", msg.CourseID),
@@ -133,19 +134,19 @@ func handleRetryOrDLQ(d amqp091.Delivery, reason string) {
 	nextRetryCount := currentRetryCount + 1
 	routingKey, retrying := retryRoutingKey(nextRetryCount)
 	if !retrying {
-		routingKey = service.DLQRoutingKey
+		routingKey = DLQRoutingKey
 	}
 
 	headers := copyHeaders(d.Headers)
-	headers[service.RetryCountHeader] = nextRetryCount
-	headers[service.FailedReasonHeader] = reason
-	headers[service.FailedAtHeader] = time.Now().Format(time.RFC3339)
+	headers[RetryCountHeader] = nextRetryCount
+	headers[FailedReasonHeader] = reason
+	headers[FailedAtHeader] = time.Now().Format(time.RFC3339)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	publishing := clonePublishing(d, headers)
-	if err := service.PublishWithConfirm(ctx, service.CourseSelectExchange, routingKey, publishing); err != nil {
+	if err := PublishWithConfirm(ctx, CourseSelectExchange, routingKey, publishing); err != nil {
 		global.Logger.Error("失败消息转发失败，保留原消息等待RabbitMQ重新投递",
 			zap.String("routingKey", routingKey),
 			zap.Int("retryCount", nextRetryCount),
@@ -173,10 +174,10 @@ func publishToDLQAndAck(d amqp091.Delivery, reason string) {
 	defer cancel()
 
 	headers := copyHeaders(d.Headers)
-	headers[service.FailedReasonHeader] = reason
-	headers[service.FailedAtHeader] = time.Now().Format(time.RFC3339)
+	headers[FailedReasonHeader] = reason
+	headers[FailedAtHeader] = time.Now().Format(time.RFC3339)
 
-	if err := service.PublishWithConfirm(ctx, service.CourseSelectExchange, service.DLQRoutingKey, clonePublishing(d, headers)); err != nil {
+	if err := PublishWithConfirm(ctx, CourseSelectExchange, DLQRoutingKey, clonePublishing(d, headers)); err != nil {
 		global.Logger.Error("死信消息转发失败，保留原消息等待RabbitMQ重新投递", zap.Error(err))
 		d.Reject(true)
 		return
@@ -187,13 +188,13 @@ func publishToDLQAndAck(d amqp091.Delivery, reason string) {
 func retryRoutingKey(retryCount int) (string, bool) {
 	switch retryCount {
 	case 1:
-		return service.Retry1sRoutingKey, true
+		return Retry1sRoutingKey, true
 	case 2:
-		return service.Retry5sRoutingKey, true
+		return Retry5sRoutingKey, true
 	case 3:
-		return service.Retry10sRoutingKey, true
+		return Retry10sRoutingKey, true
 	default:
-		return service.DLQRoutingKey, false
+		return DLQRoutingKey, false
 	}
 }
 
@@ -230,7 +231,7 @@ func copyHeaders(headers amqp091.Table) amqp091.Table {
 }
 
 func getRetryCount(headers amqp091.Table) int {
-	value, ok := headers[service.RetryCountHeader]
+	value, ok := headers[RetryCountHeader]
 	if !ok {
 		return 0
 	}

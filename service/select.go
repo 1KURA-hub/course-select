@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"go-course/global"
+	redisrepo "go-course/repository/redis"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -12,7 +13,6 @@ import (
 )
 
 const (
-	SelectStreamKey      = "select:stream"
 	requestKeyTTLSeconds = 86400
 )
 
@@ -42,10 +42,10 @@ func SelectCourse(ctx context.Context, studentID, courseID uint) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	requestkey := RequestKey(studentID, courseID)
+	requestkey := redisrepo.RequestKey(studentID, courseID)
 	stockkey := fmt.Sprintf("course:stock:%d", courseID)
 
-	keys := []string{requestkey, stockkey, SelectStreamKey}
+	keys := []string{requestkey, stockkey, redisrepo.SelectStreamKey}
 	args := []interface{}{1, studentID, courseID, requestKeyTTLSeconds}
 
 	res, err := selectScript.Run(timeoutCtx, global.RDB, keys, args...).Int()

@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"errors"
-	"go-course/dao"
 	"go-course/global"
 	"go-course/model"
+	mysqlrepo "go-course/repository/mysql"
 	"time"
 
 	"go.uber.org/zap"
@@ -17,7 +17,7 @@ func Register(ctx context.Context, student *model.Student) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	_, err := dao.GetBySid(timeoutCtx, student.Sid)
+	_, err := mysqlrepo.GetBySid(timeoutCtx, student.Sid)
 	if err == nil {
 		global.Logger.Debug("学生已经存在了", zap.String("sid", student.Sid))
 		return ErrUserExist
@@ -30,7 +30,7 @@ func Register(ctx context.Context, student *model.Student) error {
 	// 此处salt仅示例使用
 	student.Password = student.Password + "salt"
 
-	err = dao.CreateStu(timeoutCtx, student)
+	err = mysqlrepo.CreateStu(timeoutCtx, student)
 	if err != nil {
 		global.Logger.Error("数据库创建学生失败", zap.String("sid", student.Sid), zap.Error(err))
 		return ErrSystemBusy
@@ -42,7 +42,7 @@ func Login(ctx context.Context, Sid string, password string) (*model.Student, er
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	savedStu, err := dao.GetBySid(timeoutCtx, Sid)
+	savedStu, err := mysqlrepo.GetBySid(timeoutCtx, Sid)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			global.Logger.Debug("账号不存在", zap.String("sid", Sid))

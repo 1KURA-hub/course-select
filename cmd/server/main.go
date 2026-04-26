@@ -25,7 +25,6 @@ func main() {
 	initialize.InitRabbitMQ()
 	go func() {
 		global.Logger.Info("pprof 内网监控启动于 :6060 端口")
-		// 如果 ListenAndServe 报错退出 打印日志
 		if err := http.ListenAndServe(":6060", nil); err != nil {
 			global.Logger.Error("pprof 监控服务异常退出", zap.Error(err))
 		}

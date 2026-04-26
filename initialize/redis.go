@@ -3,8 +3,8 @@ package initialize
 import (
 	"context"
 	"fmt"
-	"go-course/dao"
 	"go-course/global"
+	mysqlrepo "go-course/repository/mysql"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -40,7 +40,7 @@ func LoadStockToRedis() error {
 	defer cancel()
 
 	// 获取课程列表信息
-	courses, err := dao.GetCourseList(ctx)
+	courses, err := mysqlrepo.GetCourseList(ctx)
 	if err != nil {
 		return err
 	}

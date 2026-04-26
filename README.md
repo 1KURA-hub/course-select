@@ -118,7 +118,7 @@ go mod tidy
 # RabbitMQ: amqp://guest:guest@127.0.0.1:5672/
 
 # 4. 启动服务
-go run main.go
+go run ./cmd/server
 ```
 
 ## CI/CD (GitHub Actions + SSH)

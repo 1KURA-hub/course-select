@@ -1,8 +1,7 @@
-package service
+package redisrepo
 
 import (
 	"context"
-	"fmt"
 	"go-course/global"
 	"time"
 )
@@ -12,18 +11,6 @@ const (
 	resultKeySuccessTTL  = 5 * time.Minute
 	resultKeyFailedTTL   = 24 * time.Hour
 )
-
-func RequestKey(studentID, courseID uint) string {
-	return fmt.Sprintf("request:%d:%d", studentID, courseID)
-}
-
-func ResultKey(studentID, courseID uint) string {
-	return fmt.Sprintf("res:%d:%d", studentID, courseID)
-}
-
-func MessageKey(studentID, courseID uint) string {
-	return fmt.Sprintf("msg:%d:%d", studentID, courseID)
-}
 
 func MarkSelectionSuccess(ctx context.Context, studentID, courseID uint) error {
 	pipe := global.RDB.TxPipeline()

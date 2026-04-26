@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"go-course/global"
-	"go-course/service"
+	redisrepo "go-course/repository/redis"
 	"os"
 	"strconv"
 	"strings"
@@ -21,7 +21,7 @@ const (
 	relayBlockTime        = 5 * time.Second
 	relayClaimIdleTime    = 60 * time.Second
 	relayClaimInterval    = 30 * time.Second
-	streamTrimInterval   = time.Minute
+	streamTrimInterval    = time.Minute
 	selectStreamMaxLength = 500000
 )
 
@@ -41,7 +41,7 @@ func StartRelay() {
 }
 
 func ensureRelayGroup(ctx context.Context) error {
-	err := global.RDB.XGroupCreateMkStream(ctx, service.SelectStreamKey, selectRelayGroup, "0").Err()
+	err := global.RDB.XGroupCreateMkStream(ctx, redisrepo.SelectStreamKey, selectRelayGroup, "0").Err()
 	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
 		return err
 	}
@@ -53,7 +53,7 @@ func relayNewMessages(consumerName string) {
 		streams, err := global.RDB.XReadGroup(context.Background(), &redis.XReadGroupArgs{
 			Group:    selectRelayGroup,
 			Consumer: consumerName,
-			Streams:  []string{service.SelectStreamKey, ">"},
+			Streams:  []string{redisrepo.SelectStreamKey, ">"},
 			Count:    relayReadBatchSize,
 			Block:    relayBlockTime,
 		}).Result()
@@ -82,7 +82,7 @@ func reclaimPendingMessages(consumerName string) {
 		start := "0-0"
 		for {
 			messages, next, err := global.RDB.XAutoClaim(context.Background(), &redis.XAutoClaimArgs{
-				Stream:   service.SelectStreamKey,
+				Stream:   redisrepo.SelectStreamKey,
 				Group:    selectRelayGroup,
 				Consumer: consumerName,
 				MinIdle:  relayClaimIdleTime,
@@ -118,7 +118,7 @@ func trimSelectStream() {
 
 	for range ticker.C {
 		trimCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		pending, err := global.RDB.XPending(trimCtx, service.SelectStreamKey, selectRelayGroup).Result()
+		pending, err := global.RDB.XPending(trimCtx, redisrepo.SelectStreamKey, selectRelayGroup).Result()
 		if err != nil {
 			cancel()
 			global.Logger.Error("查询Redis Stream pending状态失败", zap.Error(err))
@@ -126,7 +126,7 @@ func trimSelectStream() {
 		}
 
 		if pending.Count == 0 {
-			err = global.RDB.Do(trimCtx, "XTRIM", service.SelectStreamKey, "MAXLEN", "~", selectStreamMaxLength).Err()
+			err = global.RDB.Do(trimCtx, "XTRIM", redisrepo.SelectStreamKey, "MAXLEN", "~", selectStreamMaxLength).Err()
 			cancel()
 			if err != nil {
 				global.Logger.Error("按长度裁剪Redis Stream失败", zap.Error(err))
@@ -141,7 +141,7 @@ func trimSelectStream() {
 			continue
 		}
 
-		err = global.RDB.Do(trimCtx, "XTRIM", service.SelectStreamKey, "MINID", "~", pending.Lower).Err()
+		err = global.RDB.Do(trimCtx, "XTRIM", redisrepo.SelectStreamKey, "MINID", "~", pending.Lower).Err()
 		cancel()
 		if err != nil {
 			global.Logger.Error("按最老pending消息裁剪Redis Stream失败", zap.String("oldestPendingID", pending.Lower), zap.Error(err))
@@ -167,7 +167,7 @@ func handleStreamMessage(msg redis.XMessage) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := service.SendWithContext(ctx, studentID, courseID); err != nil {
+	if err := SendWithContext(ctx, studentID, courseID); err != nil {
 		global.Logger.Error("Redis Stream消息投递MQ失败",
 			zap.String("messageID", msg.ID),
 			zap.Uint("studentID", studentID),
@@ -176,7 +176,7 @@ func handleStreamMessage(msg redis.XMessage) {
 		return
 	}
 
-	if err := global.RDB.XAck(ctx, service.SelectStreamKey, selectRelayGroup, msg.ID).Err(); err != nil {
+	if err := global.RDB.XAck(ctx, redisrepo.SelectStreamKey, selectRelayGroup, msg.ID).Err(); err != nil {
 		global.Logger.Error("Redis Stream消息确认失败", zap.String("messageID", msg.ID), zap.Error(err))
 		return
 	}
