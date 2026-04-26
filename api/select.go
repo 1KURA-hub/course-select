@@ -2,16 +2,11 @@ package api
 
 import (
 	"errors"
-	"fmt"
-	"go-course/dao"
-	"go-course/global"
 	"go-course/service"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 // 选课接口
@@ -104,40 +99,8 @@ func SelectResult(c *gin.Context) {
 		return
 	}
 
-	// 消费者接收消息完成数据库的操作后会在Redis里面生成key为res:studentID:courseID value为1的记录
-	// 在Redis中查找res:1:1这样的key对应的value
-	key := fmt.Sprintf("res:%d:%d", studentID, courseID)
-	value, err := global.RDB.Get(c.Request.Context(), key).Result()
+	result, err := service.QuerySelectResult(c.Request.Context(), studentID, uint(courseID))
 	if err != nil {
-		// Redis结果可能过期，回查MySQL避免已成功却显示“排队中”。
-		if err == redis.Nil {
-			selection, dbErr := dao.GetSelectionBySIDAndCID(studentID, uint(courseID))
-			if dbErr == nil && selection != nil {
-				c.JSON(http.StatusOK, gin.H{
-					"code":      http.StatusOK,
-					"msg":       "抢课成功",
-					"course_id": courseID,
-				})
-				return
-			}
-
-			if errors.Is(dbErr, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusOK, gin.H{
-					"data": nil,
-					"msg":  "排队中",
-				})
-				return
-			}
-
-			if dbErr != nil {
-				c.Error(dbErr)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"code": http.StatusInternalServerError,
-					"msg":  "系统出错",
-				})
-				return
-			}
-		}
 		c.Error(err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code": http.StatusInternalServerError,
@@ -146,8 +109,7 @@ func SelectResult(c *gin.Context) {
 		return
 	}
 
-	// value不为空 说明Redis里面有记录 选课成功了
-	if value == "1" {
+	if result == service.SelectionResultSuccess {
 		c.JSON(http.StatusOK, gin.H{
 			"code":      http.StatusOK,
 			"msg":       "抢课成功",
@@ -156,7 +118,7 @@ func SelectResult(c *gin.Context) {
 		return
 	}
 
-	if value == "-1" {
+	if result == service.SelectionResultFailed {
 		c.JSON(http.StatusOK, gin.H{
 			"code":      http.StatusOK,
 			"msg":       "抢课失败",
