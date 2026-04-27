@@ -58,25 +58,6 @@ func processSingleMessage(d amqp091.Delivery) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	msgkey := redisrepo.MessageKey(msg.StudentID, msg.CourseID)
-
-	exists := global.RDB.SetNX(ctx, msgkey, "processing", 10*time.Second)
-	if err := exists.Err(); err != nil {
-		global.Logger.Error("消息锁写入Redis失败", zap.Error(err))
-		handleRetryOrDLQ(d, "消息锁写入Redis失败")
-		return
-	}
-
-	if !exists.Val() {
-		status, _ := global.RDB.Get(ctx, msgkey).Result()
-		if status == "success" {
-			d.Ack(false)
-			return
-		}
-		handleRetryOrDLQ(d, "消息正在处理中")
-		return
-	}
-
 	err = service.CreateRecord(ctx, msg.StudentID, msg.CourseID)
 	if err != nil {
 		if err == service.ErrStockEmpty {
@@ -111,7 +92,6 @@ func processSingleMessage(d amqp091.Delivery) {
 			zap.Uint("学生ID", msg.StudentID),
 			zap.Uint("课程ID", msg.CourseID),
 			zap.Error(err))
-		global.RDB.Del(ctx, msgkey)
 		handleRetryOrDLQ(d, "创建选课记录失败")
 		return
 	}

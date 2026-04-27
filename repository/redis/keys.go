@@ -11,7 +11,3 @@ func RequestKey(studentID, courseID uint) string {
 func ResultKey(studentID, courseID uint) string {
 	return fmt.Sprintf("res:%d:%d", studentID, courseID)
 }
-
-func MessageKey(studentID, courseID uint) string {
-	return fmt.Sprintf("msg:%d:%d", studentID, courseID)
-}
