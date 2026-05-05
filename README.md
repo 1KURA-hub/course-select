@@ -93,6 +93,18 @@ WRK_THREADS=4 TOKEN_FILE=tokens_70000.txt wrk -t4 -c200 -d10s --latency -s scrip
 
 该场景下成功请求数量与库存规模一致，其余请求在库存耗尽后被 Redis Lua 快速拒绝，用于验证高并发下不超卖、库存耗尽快速失败和异步落库最终一致性。两个压测场景的并发参数和业务路径不同，不能直接用延迟数值横向比较。
 
+## 接口说明
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/register` | 学生注册 |
+| POST | `/login` | 学生登录，返回 JWT |
+| GET | `/courses` | 查询课程列表 |
+| GET | `/courses/:id` | 查询课程详情，使用布隆过滤器拦截非法课程 ID |
+| POST | `/auth/select/:id` | 发起选课请求，Redis Lua 预扣库存并写入 Stream |
+| GET | `/auth/result/:id` | 查询指定课程的选课结果 |
+| GET | `/auth/selections` | 查询当前登录学生的选课记录列表，返回课程信息和状态文本 |
+
 ## 快速启动 (Quick Start)
 
 ### 1. 环境依赖

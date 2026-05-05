@@ -43,10 +43,11 @@ func InitRouter() *gin.Engine {
 
 	// 路由组auth
 	auth := r.Group("/auth")
-	auth.Use(middleware.AuthMiddleware(), middleware.Bloomfilter())
+	auth.Use(middleware.AuthMiddleware())
 	{
-		auth.POST("/select/:id", api.SelectCourse)
-		auth.GET("/result/:id", api.SelectResult)
+		auth.GET("/selections", api.ListSelections)
+		auth.POST("/select/:id", middleware.Bloomfilter(), api.SelectCourse)
+		auth.GET("/result/:id", middleware.Bloomfilter(), api.SelectResult)
 	}
 
 	return r

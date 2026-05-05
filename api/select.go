@@ -132,3 +132,40 @@ func SelectResult(c *gin.Context) {
 		"msg":  "排队中",
 	})
 }
+
+// ListSelections 查询当前登录学生的选课记录
+func ListSelections(c *gin.Context) {
+	val, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code": http.StatusUnauthorized,
+			"msg":  "用户未登录",
+		})
+		return
+	}
+
+	studentID, ok := val.(uint)
+	if !ok {
+		c.Error(errors.New("ListSelections: UserID类型断言失败"))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": http.StatusInternalServerError,
+			"msg":  "系统错误",
+		})
+		return
+	}
+
+	selections, err := service.ListStudentSelections(c.Request.Context(), studentID)
+	if err != nil {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": http.StatusInternalServerError,
+			"msg":  "系统出错",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": http.StatusOK,
+		"data": selections,
+	})
+}
