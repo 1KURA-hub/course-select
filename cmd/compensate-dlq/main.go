@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go-course/global"
 	"go-course/initialize"
+	"go-course/model"
 	"go-course/mq"
 	mysqlrepo "go-course/repository/mysql"
 	redisrepo "go-course/repository/redis"
@@ -70,13 +71,17 @@ func compensateOne(d amqp091.Delivery) error {
 	}
 
 	selection, err := mysqlrepo.GetSelectionBySIDAndCID(msg.StudentID, msg.CourseID)
-	if err == nil && selection != nil {
+	if err == nil && selection != nil && selection.Status == model.SelectionStatusSelected {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if cacheErr := redisrepo.MarkSelectionRequestSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
 			global.Logger.Warn("死信补偿命中已落库记录，但Redis结果写回失败", zap.Error(cacheErr))
 		}
 		fmt.Printf("跳过已落库消息 student=%d course=%d\n", msg.StudentID, msg.CourseID)
+		return nil
+	}
+	if err == nil && selection != nil && selection.Status == model.SelectionStatusDropped {
+		fmt.Printf("跳过已退课消息 student=%d course=%d\n", msg.StudentID, msg.CourseID)
 		return nil
 	}
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {

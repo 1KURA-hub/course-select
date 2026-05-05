@@ -3,6 +3,7 @@ package mq
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"go-course/global"
 	redisrepo "go-course/repository/redis"
 	"go-course/service"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -57,6 +59,31 @@ func processSingleMessage(d amqp091.Delivery) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	status, err := redisrepo.GetSelectionRequestStatus(ctx, msg.StudentID, msg.CourseID)
+	if errors.Is(err, redis.Nil) {
+		global.Logger.Warn("选课请求状态不存在，跳过过期或已撤销消息",
+			zap.Uint("studentID", msg.StudentID),
+			zap.Uint("courseID", msg.CourseID))
+		d.Ack(false)
+		return
+	}
+	if err != nil {
+		global.Logger.Error("读取选课请求状态失败",
+			zap.Uint("studentID", msg.StudentID),
+			zap.Uint("courseID", msg.CourseID),
+			zap.Error(err))
+		handleRetryOrDLQ(d, "读取选课请求状态失败")
+		return
+	}
+	if status != redisrepo.RequestStatusPending {
+		global.Logger.Warn("选课请求已处理，跳过重复消息",
+			zap.Uint("studentID", msg.StudentID),
+			zap.Uint("courseID", msg.CourseID),
+			zap.String("status", status))
+		d.Ack(false)
+		return
+	}
 
 	err = service.CreateRecord(ctx, msg.StudentID, msg.CourseID)
 	if err != nil {
