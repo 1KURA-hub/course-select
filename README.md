@@ -102,8 +102,11 @@ WRK_THREADS=4 TOKEN_FILE=tokens_70000.txt wrk -t4 -c200 -d10s --latency -s scrip
 | GET | `/courses` | 查询课程列表 |
 | GET | `/courses/:id` | 查询课程详情，使用布隆过滤器拦截非法课程 ID |
 | POST | `/auth/select/:id` | 发起选课请求，Redis Lua 预扣库存并写入 Stream |
+| DELETE | `/auth/select/:id` | 退课，将选课记录更新为已退课并恢复课程库存 |
 | GET | `/auth/result/:id` | 查询指定课程的选课结果 |
 | GET | `/auth/selections` | 查询当前登录学生的选课记录列表，返回课程信息和状态文本 |
+
+选课请求状态存储在 `request:{studentID}:{courseID}` 中：入口 Lua 预扣成功后写入 `pending`，消费落库成功后更新为 `success`，失败场景更新为 `failed`。退课成功后删除该 request 状态，允许用户后续重新选择同一门课程。
 
 ## 快速启动 (Quick Start)
 
