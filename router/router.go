@@ -19,7 +19,7 @@ func InitRouter() *gin.Engine {
 	// CORS 跨域资源共享 配置
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:8080"},
-		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
+		AllowMethods:     []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{},
 		AllowCredentials: true,
@@ -47,6 +47,7 @@ func InitRouter() *gin.Engine {
 	{
 		auth.GET("/selections", api.ListSelections)
 		auth.POST("/select/:id", middleware.Bloomfilter(), api.SelectCourse)
+		auth.DELETE("/select/:id", middleware.Bloomfilter(), api.DropCourse)
 		auth.GET("/result/:id", middleware.Bloomfilter(), api.SelectResult)
 	}
 

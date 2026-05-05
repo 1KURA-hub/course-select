@@ -65,6 +65,61 @@ func SelectCourse(c *gin.Context) {
 	})
 }
 
+// DropCourse 退课接口
+func DropCourse(c *gin.Context) {
+	val, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code": http.StatusUnauthorized,
+			"msg":  "用户未登录",
+		})
+		return
+	}
+
+	studentID, ok := val.(uint)
+	if !ok {
+		c.Error(errors.New("DropCourse: UserID类型断言失败"))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": http.StatusInternalServerError,
+			"msg":  "系统繁忙 请稍后重试",
+		})
+		return
+	}
+
+	courseIDstr := c.Param("id")
+	courseID, err := strconv.Atoi(courseIDstr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code": http.StatusBadRequest,
+			"msg":  "课程参数错误",
+		})
+		return
+	}
+
+	err = service.DropCourse(c.Request.Context(), studentID, uint(courseID))
+	if err != nil {
+		if errors.Is(err, service.ErrSelectionNotFound) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"code": http.StatusBadRequest,
+				"msg":  err.Error(),
+			})
+			return
+		}
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": http.StatusInternalServerError,
+			"msg":  "系统出错",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":      http.StatusOK,
+		"msg":       "退课成功",
+		"course_id": courseID,
+	})
+}
+
 // 查询选课结果接口
 func SelectResult(c *gin.Context) {
 	// 验证token
@@ -122,6 +177,15 @@ func SelectResult(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"code":      http.StatusOK,
 			"msg":       "抢课失败",
+			"course_id": courseID,
+		})
+		return
+	}
+
+	if result == service.SelectionResultDropped {
+		c.JSON(http.StatusOK, gin.H{
+			"code":      http.StatusOK,
+			"msg":       "已退课",
 			"course_id": courseID,
 		})
 		return
