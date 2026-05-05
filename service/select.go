@@ -32,7 +32,7 @@ end
 
 -- 3. 原子完成库存预扣、写入防重标记、写入 Redis Stream 消息表
 redis.call('decrby', KEYS[2], tonumber(ARGV[1]))
-redis.call('set', KEYS[1], '1', 'EX', tonumber(ARGV[4]))
+redis.call('set', KEYS[1], ARGV[5], 'EX', tonumber(ARGV[4]))
 redis.call('xadd', KEYS[3], '*', 'student_id', ARGV[2], 'course_id', ARGV[3])
 return 1 -- 成功
 `)
@@ -46,7 +46,7 @@ func SelectCourse(ctx context.Context, studentID, courseID uint) error {
 	stockkey := fmt.Sprintf("course:stock:%d", courseID)
 
 	keys := []string{requestkey, stockkey, redisrepo.SelectStreamKey}
-	args := []interface{}{1, studentID, courseID, requestKeyTTLSeconds}
+	args := []interface{}{1, studentID, courseID, requestKeyTTLSeconds, redisrepo.RequestStatusPending}
 
 	res, err := selectScript.Run(timeoutCtx, global.RDB, keys, args...).Int()
 	if err != nil {

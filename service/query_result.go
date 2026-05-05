@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"go-course/global"
 	mysqlrepo "go-course/repository/mysql"
 	redisrepo "go-course/repository/redis"
 
@@ -18,13 +17,15 @@ const (
 )
 
 func QuerySelectResult(ctx context.Context, studentID, courseID uint) (string, error) {
-	value, err := global.RDB.Get(ctx, redisrepo.ResultKey(studentID, courseID)).Result()
+	value, err := redisrepo.GetSelectionRequestStatus(ctx, studentID, courseID)
 	if err == nil {
 		switch value {
-		case "1":
+		case redisrepo.RequestStatusSuccess:
 			return SelectionResultSuccess, nil
-		case "-1":
+		case redisrepo.RequestStatusFailed:
 			return SelectionResultFailed, nil
+		case redisrepo.RequestStatusPending:
+			return SelectionResultPending, nil
 		default:
 			return SelectionResultPending, nil
 		}
