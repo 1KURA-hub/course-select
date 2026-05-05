@@ -18,7 +18,7 @@ func InitRouter() *gin.Engine {
 
 	// CORS 跨域资源共享 配置
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:8080"},
+		AllowOrigins:     []string{"http://localhost:8080", "http://localhost:5173", "http://127.0.0.1:5173"},
 		AllowMethods:     []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{},
@@ -30,12 +30,9 @@ func InitRouter() *gin.Engine {
 	r.POST("/login", api.Login)
 	r.GET("/courses", api.GetCourseList)
 	r.GET("/courses/:id", middleware.Bloomfilter(), api.GetCourseById)
-	r.Static("/static", "./web/static")
+	r.Static("/assets", "./web/dist/assets")
 	r.GET("/", func(c *gin.Context) {
-		c.File("./web/index.html")
-	})
-	r.GET("/home", func(c *gin.Context) {
-		c.File("./web/home.html")
+		c.File("./web/dist/index.html")
 	})
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"msg": "ok"})
