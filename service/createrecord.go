@@ -35,11 +35,20 @@ func CreateRecord(timeoutCtx context.Context, studentID, courseID uint) error {
 		var selection = &model.Selection{
 			StudentID: studentID,
 			CourseID:  course.ID,
+			Status:    model.SelectionStatusSelected,
 		}
 
 		err := tx.Create(selection).Error
 		if err != nil {
 			if strings.Contains(err.Error(), "Duplicate entry") {
+				var existing model.Selection
+				queryErr := tx.Where("student_id = ? AND course_id = ?", studentID, courseID).First(&existing).Error
+				if queryErr != nil {
+					return queryErr
+				}
+				if existing.Status == model.SelectionStatusDropped {
+					return tx.Model(&existing).Update("status", model.SelectionStatusSelected).Error
+				}
 				global.Logger.Error("重复选课", zap.Error(err))
 				return ErrRepeatSelection
 			}

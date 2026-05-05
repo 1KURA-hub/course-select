@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"go-course/model"
 	mysqlrepo "go-course/repository/mysql"
 	redisrepo "go-course/repository/redis"
 
@@ -14,6 +15,7 @@ const (
 	SelectionResultSuccess = "success"
 	SelectionResultFailed  = "failed"
 	SelectionResultPending = "pending"
+	SelectionResultDropped = "dropped"
 )
 
 func QuerySelectResult(ctx context.Context, studentID, courseID uint) (string, error) {
@@ -36,8 +38,11 @@ func QuerySelectResult(ctx context.Context, studentID, courseID uint) (string, e
 	}
 
 	selection, dbErr := mysqlrepo.GetSelectionBySIDAndCID(studentID, courseID)
-	if dbErr == nil && selection != nil {
+	if dbErr == nil && selection != nil && selection.Status == model.SelectionStatusSelected {
 		return SelectionResultSuccess, nil
+	}
+	if dbErr == nil && selection != nil && selection.Status == model.SelectionStatusDropped {
+		return SelectionResultDropped, nil
 	}
 
 	if errors.Is(dbErr, gorm.ErrRecordNotFound) {

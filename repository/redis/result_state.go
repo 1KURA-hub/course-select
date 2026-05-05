@@ -31,3 +31,7 @@ func MarkSelectionRequestSuccess(ctx context.Context, studentID, courseID uint) 
 func MarkSelectionRequestFailed(ctx context.Context, studentID, courseID uint) error {
 	return global.RDB.Set(ctx, RequestKey(studentID, courseID), RequestStatusFailed, requestStatusTTL).Err()
 }
+
+func DeleteSelectionRequestStatus(ctx context.Context, studentID, courseID uint) error {
+	return global.RDB.Del(ctx, RequestKey(studentID, courseID)).Err()
+}
