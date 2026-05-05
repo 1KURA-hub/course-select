@@ -73,7 +73,7 @@ func compensateOne(d amqp091.Delivery) error {
 	if err == nil && selection != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if cacheErr := redisrepo.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+		if cacheErr := redisrepo.MarkSelectionRequestSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
 			global.Logger.Warn("死信补偿命中已落库记录，但Redis结果写回失败", zap.Error(cacheErr))
 		}
 		fmt.Printf("跳过已落库消息 student=%d course=%d\n", msg.StudentID, msg.CourseID)
@@ -91,7 +91,7 @@ func compensateOne(d amqp091.Delivery) error {
 		return err
 	}
 
-	if cacheErr := redisrepo.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+	if cacheErr := redisrepo.MarkSelectionRequestSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
 		global.Logger.Warn("死信补偿落库成功，但Redis结果写回失败", zap.Error(cacheErr))
 	}
 

@@ -7,9 +7,7 @@ import (
 )
 
 const (
-	resultKeySuccessTTL = 5 * time.Minute
-	resultKeyFailedTTL  = 24 * time.Hour
-	requestStatusTTL    = 24 * time.Hour
+	requestStatusTTL = 24 * time.Hour
 )
 
 const (
@@ -17,14 +15,6 @@ const (
 	RequestStatusSuccess = "success"
 	RequestStatusFailed  = "failed"
 )
-
-func MarkSelectionSuccess(ctx context.Context, studentID, courseID uint) error {
-	return global.RDB.Set(ctx, ResultKey(studentID, courseID), 1, resultKeySuccessTTL).Err()
-}
-
-func MarkSelectionFailed(ctx context.Context, studentID, courseID uint) error {
-	return global.RDB.Set(ctx, ResultKey(studentID, courseID), -1, resultKeyFailedTTL).Err()
-}
 
 func GetSelectionRequestStatus(ctx context.Context, studentID, courseID uint) (string, error) {
 	return global.RDB.Get(ctx, RequestKey(studentID, courseID)).Result()

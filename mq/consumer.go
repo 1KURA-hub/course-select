@@ -64,7 +64,7 @@ func processSingleMessage(d amqp091.Delivery) {
 			if global.Logger.Core().Enabled(zap.DebugLevel) {
 				global.Logger.Debug("库存不足", zap.Uint("课程ID", msg.CourseID))
 			}
-			if cacheErr := redisrepo.MarkSelectionFailed(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+			if cacheErr := redisrepo.MarkSelectionRequestFailed(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
 				global.Logger.Warn("库存不足结果写入Redis失败，按最终失败直接确认消息",
 					zap.Uint("studentID", msg.StudentID),
 					zap.Uint("courseID", msg.CourseID),
@@ -78,7 +78,7 @@ func processSingleMessage(d amqp091.Delivery) {
 			global.Logger.Warn("并发重复选课，已拦截",
 				zap.Uint("uid", msg.StudentID),
 				zap.Uint("cid", msg.CourseID))
-			if cacheErr := redisrepo.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+			if cacheErr := redisrepo.MarkSelectionRequestSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
 				global.Logger.Warn("重复选课成功结果写入Redis失败，依赖MySQL最终事实兜底",
 					zap.Uint("studentID", msg.StudentID),
 					zap.Uint("courseID", msg.CourseID),
@@ -96,7 +96,7 @@ func processSingleMessage(d amqp091.Delivery) {
 		return
 	}
 
-	if cacheErr := redisrepo.MarkSelectionSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
+	if cacheErr := redisrepo.MarkSelectionRequestSuccess(ctx, msg.StudentID, msg.CourseID); cacheErr != nil {
 		global.Logger.Warn("选课成功结果写入Redis失败，依赖MySQL最终事实兜底",
 			zap.Uint("studentID", msg.StudentID),
 			zap.Uint("courseID", msg.CourseID),
