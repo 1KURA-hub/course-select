@@ -1,5 +1,10 @@
 package model
 
+const (
+	SelectionStatusSelected = 1
+	SelectionStatusDropped  = 2
+)
+
 type Selection struct {
 	ID uint `gorm:"primarykey"`
 	// 选课表 student_id和course_id建立唯一联合索引 保证不重复选课

@@ -56,8 +56,10 @@ func ListSelectionsByStudentID(ctx context.Context, studentID uint) ([]StudentSe
 
 func SelectionStatusText(status int) string {
 	switch status {
-	case 1:
+	case model.SelectionStatusSelected:
 		return "选课成功"
+	case model.SelectionStatusDropped:
+		return "已退课"
 	default:
 		return "未知状态"
 	}
