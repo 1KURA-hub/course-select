@@ -9,7 +9,7 @@ export default function CourseDetail({ id, onClose, onSelecting }) {
   const addToast = useToast();
 
   useEffect(() => {
-    api.getCourse(id).then((d) => setCourse(d.course)).catch((e) => addToast(e.message, "error")).finally(() => setLoading(false));
+    api.getCourse(id).then((d) => setCourse(d.data)).catch((e) => addToast(e.message, "error")).finally(() => setLoading(false));
   }, [id]);
 
   async function handleSelect() {
@@ -35,7 +35,7 @@ export default function CourseDetail({ id, onClose, onSelecting }) {
 
   function handleOverlay(e) { if (e.target === e.currentTarget) onClose(); }
 
-  const stock = course?.stock ?? 0;
+  const stock = course?.Stock ?? 0;
   const total = 50;
   const pct = Math.min((stock / total) * 100, 100);
   const circumference = 2 * Math.PI * 34;
@@ -49,8 +49,8 @@ export default function CourseDetail({ id, onClose, onSelecting }) {
           {loading ? <div className="skeleton" style={{ width: "100%", height: 48 }} /> : (
             <>
               <div>
-                <h2>{course?.name}</h2>
-                <p className="teacher">授课教师 ID: {course?.teacher_id}</p>
+                <h2>{course?.Name}</h2>
+                <p className="teacher">授课教师 ID: {course?.TeacherID}</p>
               </div>
               <button className="btn btn-ghost" style={{ padding: 8, minWidth: 36 }} onClick={onClose}>
                 <X size={18} />

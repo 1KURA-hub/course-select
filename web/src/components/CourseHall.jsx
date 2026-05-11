@@ -12,7 +12,7 @@ export default function CourseHall({ onDetail, onSelecting }) {
   async function loadCourses() {
     try {
       const data = await api.getCourses();
-      setCourses(data.courses || []);
+      setCourses(data.data || []);
     } catch (e) {
       addToast("加载课程失败: " + e.message, "error");
     } finally {
@@ -25,14 +25,14 @@ export default function CourseHall({ onDetail, onSelecting }) {
     if (course.stock <= 0) return;
     try {
       await api.selectCourse(course.id);
-      onSelecting(course.id);
+      onSelecting(course.ID);
     } catch (err) {
       addToast(err.message, "error");
     }
   }
 
-  const hotCount = courses.filter((c) => c.stock > 0 && c.stock <= 5).length;
-  const fullCount = courses.filter((c) => c.stock <= 0).length;
+  const hotCount = courses.filter((c) => c.Stock > 0 && c.stock <= 5).length;
+  const fullCount = courses.filter((c) => c.Stock <= 0).length;
 
   return (
     <div className="hall">
@@ -44,7 +44,7 @@ export default function CourseHall({ onDetail, onSelecting }) {
           </div>
           <div className="stat-pill">
             <span className="dot" style={{ background: "var(--primary)", boxShadow: "0 0 6px var(--primary)" }} />
-            可选 {courses.filter((c) => c.stock > 0).length}
+            可选 {courses.filter((c) => c.Stock > 0).length}
           </div>
           <div className="stat-pill">
             <span className="dot" style={{ background: "var(--text-dim)", boxShadow: "none" }} />
@@ -61,8 +61,8 @@ export default function CourseHall({ onDetail, onSelecting }) {
         <div className="course-grid">
           {courses.map((c) => (
             <div key={c.id} className="glass course-card" onClick={() => onDetail(c.id)}>
-              <div className="name">{c.name}</div>
-              <div className="teacher">授课教师 ID: {c.teacher_id}</div>
+              <div className="name">{c.Name}</div>
+              <div className="teacher">授课教师 ID: {c.TeacherID}</div>
               <div className="stock-row">
                 <div className="stock-bar">
                   <div
