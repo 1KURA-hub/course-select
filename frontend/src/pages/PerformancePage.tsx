@@ -5,7 +5,7 @@ import { MetricCard } from "../components/MetricCard";
 import type { BenchmarkPoint, BenchmarkStatus } from "../types";
 
 type Metric = { label: string; value: string; tone: string };
-type Monitor = { redisStock: number; queued: number; processing: number; dlq: number; written: number };
+type Monitor = { redisStock: number; queued: number; processing: number; dlq: number; written: number; mqPublished: number; mqConsumed: number; mqBacklog: number };
 
 const zeroMetrics: Metric[] = [
   { label: "QPS", value: "0", tone: "qps" },
@@ -16,7 +16,7 @@ const zeroMetrics: Metric[] = [
   { label: "不超卖验证", value: "—", tone: "safe" }
 ];
 
-const initialMonitor: Monitor = { redisStock: 1000, queued: 0, processing: 0, dlq: 0, written: 0 };
+const initialMonitor: Monitor = { redisStock: 1000, queued: 0, processing: 0, dlq: 0, written: 0, mqPublished: 0, mqConsumed: 0, mqBacklog: 0 };
 
 export function PerformancePage() {
   const [stock, setStock] = useState(1000);
@@ -87,7 +87,10 @@ export function PerformancePage() {
       queued: status.monitor.queued,
       processing: status.monitor.processing,
       dlq: status.monitor.dlq,
-      written: status.monitor.written
+      written: status.monitor.written,
+      mqPublished: status.monitor.mq_published ?? status.monitor.queued,
+      mqConsumed: status.monitor.mq_consumed ?? status.monitor.processing,
+      mqBacklog: status.monitor.mq_backlog ?? status.monitor.queued
     });
     setChartPoints(status.points || []);
   }
@@ -149,9 +152,9 @@ export function PerformancePage() {
         <div className="realtime-card">
           <strong>RabbitMQ 队列</strong>
           <div className="queue-mini">
-            <span>待处理 <b key={monitor.queued}>{monitor.queued}</b></span>
-            <span>处理中 <b key={monitor.processing}>{monitor.processing}</b></span>
-            <span>死信 <b key={monitor.dlq}>{monitor.dlq}</b></span>
+            <span>已投递 <b key={monitor.mqPublished}>{monitor.mqPublished}</b></span>
+            <span>已消费 <b key={monitor.mqConsumed}>{monitor.mqConsumed}</b></span>
+            <span>积压 <b key={monitor.mqBacklog}>{monitor.mqBacklog}</b></span>
           </div>
         </div>
         <div className="realtime-card">

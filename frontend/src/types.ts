@@ -58,6 +58,9 @@ export type BenchmarkStatus = {
     processing: number;
     dlq: number;
     written: number;
+    mq_published?: number;
+    mq_consumed?: number;
+    mq_backlog?: number;
   };
   points: BenchmarkPoint[];
   message: string;

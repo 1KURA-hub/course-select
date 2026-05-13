@@ -9,6 +9,8 @@ export function SelectionsPage({
   selections: Selection[];
   onDrop: (courseId: number) => void;
 }) {
+  const activeSelections = selections.filter((item) => item.status !== 2 && item.ui_status !== "dropped");
+
   return (
     <section className="page">
       <div className="page-heading">
@@ -25,10 +27,10 @@ export function SelectionsPage({
           <span>选课时间</span>
           <span>操作</span>
         </div>
-        {selections.length === 0 ? (
+        {activeSelections.length === 0 ? (
           <div className="empty-panel">暂无选课记录。</div>
         ) : (
-          selections.map((item) => (
+          activeSelections.map((item) => (
             <div className="selection-row" key={item.selection_id}>
               <strong>{item.course_name}</strong>
               <span>{item.teacher_id}</span>

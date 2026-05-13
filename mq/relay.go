@@ -17,7 +17,7 @@ import (
 
 const (
 	selectRelayGroup      = "select-relay-group"
-	relayReadBatchSize    = 10
+	relayReadBatchSize    = 100
 	relayBlockTime        = 5 * time.Second
 	relayClaimIdleTime    = 60 * time.Second
 	relayClaimInterval    = 30 * time.Second
@@ -175,13 +175,14 @@ func handleStreamMessage(msg redis.XMessage) {
 			zap.Error(err))
 		return
 	}
+	IncPublished()
 
 	if err := global.RDB.XAck(ctx, redisrepo.SelectStreamKey, selectRelayGroup, msg.ID).Err(); err != nil {
 		global.Logger.Error("Redis Stream消息确认失败", zap.String("messageID", msg.ID), zap.Error(err))
 		return
 	}
 
-	global.Logger.Info("Redis Stream消息已投递MQ",
+	global.Logger.Debug("Redis Stream消息已投递MQ",
 		zap.String("messageID", msg.ID),
 		zap.Uint("studentID", studentID),
 		zap.Uint("courseID", courseID))

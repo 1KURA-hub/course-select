@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go-course/global"
 	"go-course/model"
+	"go-course/mq"
 	redisrepo "go-course/repository/redis"
 	"go-course/utils"
 	"io"
@@ -57,11 +58,14 @@ type benchmarkMetrics struct {
 }
 
 type benchmarkMonitor struct {
-	RedisStock int   `json:"redis_stock"`
-	Queued     int   `json:"queued"`
-	Processing int   `json:"processing"`
-	DLQ        int   `json:"dlq"`
-	Written    int64 `json:"written"`
+	RedisStock  int    `json:"redis_stock"`
+	Queued      int    `json:"queued"`
+	Processing  int    `json:"processing"`
+	DLQ         int    `json:"dlq"`
+	Written     int64  `json:"written"`
+	MQPublished uint64 `json:"mq_published"`
+	MQConsumed  uint64 `json:"mq_consumed"`
+	MQBacklog   int    `json:"mq_backlog"`
 }
 
 type benchmarkBucket struct {
@@ -281,6 +285,7 @@ func resetBenchmarkData(courseID uint, stock int) error {
 	}
 	_ = global.RDB.Del(ctx, fmt.Sprintf("course:%d", courseID)).Err()
 	_ = global.RDB.XTrimMaxLen(ctx, redisrepo.SelectStreamKey, 0).Err()
+	mq.ResetMetrics()
 	purgeQueue(global.Settings.RabbitMQ.QueueName)
 	purgeQueue(global.Settings.RabbitMQ.QueueName + ".retry.1s")
 	purgeQueue(global.Settings.RabbitMQ.QueueName + ".retry.5s")
@@ -309,12 +314,17 @@ func loadBenchmarkMonitor(courseID uint) benchmarkMonitor {
 	_ = global.DB.WithContext(ctx).Model(&model.Selection{}).
 		Where("course_id = ? AND status = ?", courseID, model.SelectionStatusSelected).
 		Count(&written).Error
+	mqSnapshot := mq.SnapshotMetrics()
+	backlog := queueMessages(global.Settings.RabbitMQ.QueueName)
 	return benchmarkMonitor{
-		RedisStock: redisStock,
-		Queued:     queueMessages(global.Settings.RabbitMQ.QueueName),
-		Processing: queueMessages(global.Settings.RabbitMQ.QueueName+".retry.1s") + queueMessages(global.Settings.RabbitMQ.QueueName+".retry.5s") + queueMessages(global.Settings.RabbitMQ.QueueName+".retry.10s"),
-		DLQ:        queueMessages(global.Settings.RabbitMQ.QueueName + ".dlq"),
-		Written:    written,
+		RedisStock:  redisStock,
+		Queued:      int(mqSnapshot.Published),
+		Processing:  int(mqSnapshot.Consumed),
+		DLQ:         int(mqSnapshot.DLQ),
+		Written:     written,
+		MQPublished: mqSnapshot.Published,
+		MQConsumed:  mqSnapshot.Consumed,
+		MQBacklog:   backlog,
 	}
 }
 

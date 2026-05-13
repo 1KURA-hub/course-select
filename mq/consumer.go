@@ -31,7 +31,11 @@ func Consumer() {
 		return
 	}
 
-	WorkerNum := 10
+	if err := global.MQChannel.Qos(100, 0, false); err != nil {
+		global.Logger.Warn("设置MQ消费者预取失败", zap.Error(err))
+	}
+
+	WorkerNum := 32
 
 	for i := 0; i < WorkerNum; i++ {
 		go func(workerID int) {
@@ -45,7 +49,7 @@ func Consumer() {
 }
 
 func processSingleMessage(d amqp091.Delivery) {
-	global.Logger.Info("收到MQ消息", zap.String("msgID", d.MessageId))
+	global.Logger.Debug("收到MQ消息", zap.String("msgID", d.MessageId))
 	var msg Message
 
 	err := json.Unmarshal(d.Body, &msg)
@@ -66,6 +70,7 @@ func processSingleMessage(d amqp091.Delivery) {
 			zap.Uint("studentID", msg.StudentID),
 			zap.Uint("courseID", msg.CourseID))
 		d.Ack(false)
+		IncConsumed()
 		return
 	}
 	if err != nil {
@@ -98,6 +103,7 @@ func processSingleMessage(d amqp091.Delivery) {
 					zap.Error(cacheErr))
 			}
 			d.Ack(false)
+			IncConsumed()
 			return
 		}
 
@@ -112,6 +118,7 @@ func processSingleMessage(d amqp091.Delivery) {
 					zap.Error(cacheErr))
 			}
 			d.Ack(false)
+			IncConsumed()
 			return
 		}
 
@@ -130,10 +137,11 @@ func processSingleMessage(d amqp091.Delivery) {
 			zap.Error(cacheErr))
 	}
 
-	global.Logger.Info("选课记录创建成功",
+	global.Logger.Debug("选课记录创建成功",
 		zap.Uint("学生ID", msg.StudentID),
 		zap.Uint("课程ID", msg.CourseID))
 	d.Ack(false)
+	IncConsumed()
 }
 
 func handleRetryOrDLQ(d amqp091.Delivery, reason string) {
@@ -172,8 +180,10 @@ func handleRetryOrDLQ(d amqp091.Delivery, reason string) {
 		global.Logger.Error("消息多次重试失败，已转入死信队列",
 			zap.Int("retryCount", nextRetryCount),
 			zap.String("reason", reason))
+		IncDLQ()
 	}
 	d.Ack(false)
+	IncConsumed()
 }
 
 func publishToDLQAndAck(d amqp091.Delivery, reason string) {
@@ -190,6 +200,8 @@ func publishToDLQAndAck(d amqp091.Delivery, reason string) {
 		return
 	}
 	d.Ack(false)
+	IncDLQ()
+	IncConsumed()
 }
 
 func retryRoutingKey(retryCount int) (string, bool) {

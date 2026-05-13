@@ -41,7 +41,7 @@ func ListSelectionsByStudentID(ctx context.Context, studentID uint) ([]StudentSe
 		Table("selections").
 		Select("selections.id AS selection_id, selections.student_id, selections.course_id, selections.status, courses.name AS course_name, courses.teacher_id").
 		Joins("LEFT JOIN courses ON courses.id = selections.course_id").
-		Where("selections.student_id = ?", studentID).
+		Where("selections.student_id = ? AND selections.status <> ?", studentID, model.SelectionStatusDropped).
 		Order("selections.id DESC").
 		Scan(&selections).Error
 	if err != nil {
