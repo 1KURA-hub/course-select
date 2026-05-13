@@ -7,6 +7,7 @@ import (
 	"go-course/service"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -33,6 +34,11 @@ func GetCourseList(c *gin.Context) {
 }
 
 func GetCourseById(c *gin.Context) {
+	if strings.Contains(c.GetHeader("Accept"), "text/html") {
+		c.File("./web/dist/index.html")
+		return
+	}
+
 	idstr := c.Param("id")
 	id, err := strconv.Atoi(idstr)
 	if err != nil {

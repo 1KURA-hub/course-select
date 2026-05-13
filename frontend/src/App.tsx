@@ -1,544 +1,305 @@
-import {
-  Activity,
-  ArrowRight,
-  BookOpen,
-  CheckCircle2,
-  Clock3,
-  Database,
-  Loader2,
-  LogOut,
-  MessageSquare,
-  Rabbit,
-  RotateCcw,
-  Search,
-  Server,
-  ShieldCheck,
-  Sparkles,
-  UserRound,
-  XCircle
-} from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-type Course = {
-  ID: number;
-  Name: string;
-  Stock: number;
-  TeacherID: number;
-};
-
-type Selection = {
-  selection_id: number;
-  student_id: number;
-  course_id: number;
-  status: number;
-  status_text: string;
-  course_name: string;
-  teacher_id: number;
-};
-
-type ApiResponse<T = unknown> = {
-  code?: number;
-  msg?: string;
-  data?: T;
-  token?: string;
-  name?: string;
-  id?: number;
-  course_id?: number;
-};
-
-type AuthUser = {
-  token: string;
-  name: string;
-  id: number;
-};
-
-type ResultState = "idle" | "pending" | "success" | "failed" | "dropped";
-type AuthMode = "login" | "register";
-
-const timeline = [
-  { title: "发起请求", desc: "Gin 鉴权与参数校验", icon: Server },
-  { title: "Lua 预扣", desc: "请求去重与库存扣减", icon: ShieldCheck },
-  { title: "Stream 写入", desc: "保存预扣成功消息", icon: MessageSquare },
-  { title: "RabbitMQ", desc: "异步削峰消费", icon: Rabbit },
-  { title: "MySQL 落库", desc: "联合唯一索引兜底", icon: Database },
-  { title: "结果返回", desc: "轮询 request 状态", icon: CheckCircle2 }
-];
-
-const tokenKey = "course_select_token";
-const userKey = "course_select_user";
-
-function loadAuth(): AuthUser | null {
-  const token = localStorage.getItem(tokenKey);
-  const raw = localStorage.getItem(userKey);
-  if (!token || !raw) return null;
-  try {
-    const user = JSON.parse(raw) as Omit<AuthUser, "token">;
-    return { ...user, token };
-  } catch {
-    return null;
-  }
-}
-
-async function apiRequest<T>(path: string, token?: string, options: RequestInit = {}) {
-  const headers = new Headers(options.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (options.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-
-  const resp = await fetch(path, { ...options, headers });
-  const text = await resp.text();
-  const payload = text ? (JSON.parse(text) as ApiResponse<T>) : {};
-
-  if (!resp.ok) {
-    throw new Error(payload.msg || `请求失败: ${resp.status}`);
-  }
-  return payload;
-}
-
-function normalizeCourses(data: unknown): Course[] {
-  if (!Array.isArray(data)) return [];
-  return data.map((item) => item as Course);
-}
-
-function resultFromMessage(message?: string): ResultState {
-  if (!message) return "pending";
-  if (message.includes("成功")) return "success";
-  if (message.includes("失败")) return "failed";
-  if (message.includes("已退课")) return "dropped";
-  return "pending";
-}
-
-function statusLabel(state: ResultState) {
-  switch (state) {
-    case "pending":
-      return "排队中";
-    case "success":
-      return "抢课成功";
-    case "failed":
-      return "抢课失败";
-    case "dropped":
-      return "已退课";
-    default:
-      return "等待操作";
-  }
-}
+import { api, clearAuth, loadAuth, saveAuth } from "./api";
+import { ConfirmDialog } from "./components/ConfirmDialog";
+import { Navbar } from "./components/Navbar";
+import { SelectionDrawer } from "./components/SelectionDrawer";
+import { processingSteps } from "./data";
+import { ArchitecturePage } from "./pages/ArchitecturePage";
+import { CourseDetailPage } from "./pages/CourseDetailPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { LoginPage } from "./pages/LoginPage";
+import { PerformancePage } from "./pages/PerformancePage";
+import { SelectionsPage } from "./pages/SelectionsPage";
+import type { AuthUser, Course, FilterKey, ProcessingState, RouteState, Selection, SelectionStatus } from "./types";
+import { getCourseCapacity, getRoute, normalizeCourses, normalizeSelection, resultFromMessage, routeToPath } from "./utils";
 
 export function App() {
+  const [route, setRoute] = useState<RouteState>(() => getRoute());
   const [auth, setAuth] = useState<AuthUser | null>(() => loadAuth());
-  const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [sid, setSid] = useState("");
-  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [notice, setNotice] = useState("");
+  const [loadingAuth, setLoadingAuth] = useState(false);
+  const [loadingCourses, setLoadingCourses] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
-  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [selections, setSelections] = useState<Selection[]>([]);
   const [query, setQuery] = useState("");
-  const [resultState, setResultState] = useState<ResultState>("idle");
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const [pendingCourseIds, setPendingCourseIds] = useState<Set<number>>(() => new Set());
+  const [processingCourse, setProcessingCourse] = useState<Course | null>(null);
+  const [processingState, setProcessingState] = useState<ProcessingState>("idle");
   const [activeStep, setActiveStep] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [busyAction, setBusyAction] = useState<"select" | "drop" | null>(null);
-  const [notice, setNotice] = useState("登录后加载课程列表，选择课程后可以开始演示选课链路。");
-  const pollingRef = useRef<number | null>(null);
+  const [processingMessage, setProcessingMessage] = useState("请求已进入异步队列");
+  const [dropTarget, setDropTarget] = useState<number | null>(null);
   const stageRef = useRef<number | null>(null);
+  const pollingRef = useRef<number | null>(null);
 
-  const filteredCourses = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
-    if (!keyword) return courses;
-    return courses.filter((course) => {
-      return course.Name.toLowerCase().includes(keyword) || String(course.ID).includes(keyword);
-    });
-  }, [courses, query]);
-
-  const selectedRecord = useMemo(() => {
-    if (!selectedCourse) return null;
-    return selections.find((item) => item.course_id === selectedCourse.ID) || null;
-  }, [selectedCourse, selections]);
-
-  const clearTimers = useCallback(() => {
-    if (pollingRef.current) window.clearInterval(pollingRef.current);
-    if (stageRef.current) window.clearInterval(stageRef.current);
-    pollingRef.current = null;
-    stageRef.current = null;
+  const navigate = useCallback((path: string) => {
+    window.history.pushState({}, "", path);
+    setRoute(getRoute(path));
   }, []);
 
-  const loadSelections = useCallback(async () => {
-    if (!auth) return;
-    const payload = await apiRequest<Selection[]>("/auth/selections", auth.token);
-    setSelections(payload.data || []);
-  }, [auth]);
+  const clearTimers = useCallback(() => {
+    if (stageRef.current) window.clearInterval(stageRef.current);
+    if (pollingRef.current) window.clearInterval(pollingRef.current);
+    stageRef.current = null;
+    pollingRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const handlePop = () => setRoute(getRoute());
+    window.addEventListener("popstate", handlePop);
+    return () => window.removeEventListener("popstate", handlePop);
+  }, []);
+
+  useEffect(() => {
+    return () => clearTimers();
+  }, [clearTimers]);
 
   const loadCourses = useCallback(async () => {
-    setLoading(true);
+    setLoadingCourses(true);
     try {
-      const payload = await apiRequest<Course[]>("/courses");
-      const list = normalizeCourses(payload.data);
-      setCourses(list);
-      setSelectedCourse((current) => current || list[0] || null);
-      setNotice(list.length > 0 ? "课程列表已加载，选择一门课程开始操作。" : "当前没有课程数据。");
+      const payload = await api.getCourses();
+      setCourses(normalizeCourses(payload.data));
+      setNotice("");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "课程列表加载失败");
+      setCourses(normalizeCourses([]));
+      setNotice(error instanceof Error ? `课程接口暂不可用，已展示演示数据：${error.message}` : "课程接口暂不可用，已展示演示数据。");
     } finally {
-      setLoading(false);
+      setLoadingCourses(false);
     }
   }, []);
 
-  const refreshCourse = useCallback(
-    async (id: number) => {
-      const payload = await apiRequest<Course>(`/courses/${id}`);
-      if (payload.data) {
-        setSelectedCourse(payload.data);
-        setCourses((current) => current.map((course) => (course.ID === id ? payload.data! : course)));
-      }
-    },
-    []
-  );
+  const loadSelections = useCallback(async () => {
+    if (!auth) {
+      setSelections([]);
+      return;
+    }
+    try {
+      const payload = await api.getSelections(auth.token);
+      setSelections((payload.data || []).map(normalizeSelection));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "选课记录加载失败");
+    }
+  }, [auth]);
 
   useEffect(() => {
     void loadCourses();
   }, [loadCourses]);
 
   useEffect(() => {
-    if (auth) void loadSelections();
-  }, [auth, loadSelections]);
+    void loadSelections();
+  }, [loadSelections]);
 
   useEffect(() => {
-    return () => clearTimers();
-  }, [clearTimers]);
+    if (!auth && route.page !== "login") {
+      navigate("/login");
+    }
+  }, [auth, navigate, route.page]);
 
-  async function handleAuth(event: FormEvent) {
+  const selectedCourseIds = useMemo(() => new Set(selections.filter((item) => item.status === 1).map((item) => item.course_id)), [selections]);
+
+  const getCourseStatus = useCallback(
+    (course: Course): SelectionStatus | "available" | "hot" | "full" => {
+      if (pendingCourseIds.has(course.ID)) return "pending";
+      if (selectedCourseIds.has(course.ID)) return "success";
+      if (course.Stock <= 0) return "full";
+      const ratio = course.Stock / getCourseCapacity(course);
+      if (ratio > 0 && ratio <= 0.2) return "hot";
+      return "available";
+    },
+    [pendingCourseIds, selectedCourseIds]
+  );
+
+  const visibleCourses = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return courses.filter((course) => {
+      const status = getCourseStatus(course);
+      const matchesQuery =
+        !keyword ||
+        course.Name.toLowerCase().includes(keyword) ||
+        String(course.ID).includes(keyword) ||
+        String(course.TeacherID).includes(keyword);
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "available" && (status === "available" || status === "hot")) ||
+        (filter === "hot" && status === "hot") ||
+        (filter === "full" && status === "full") ||
+        (filter === "selected" && status === "success");
+      return matchesQuery && matchesFilter;
+    });
+  }, [courses, filter, getCourseStatus, query]);
+
+  async function handleLogin(event: FormEvent) {
     event.preventDefault();
-    setLoading(true);
+    setLoadingAuth(true);
+    setNotice("");
     try {
-      if (authMode === "register") {
-        await apiRequest("/register", undefined, {
-          method: "POST",
-          body: JSON.stringify({ sid, name, password })
-        });
-        setAuthMode("login");
-        setNotice("注册成功，现在可以登录。");
-        return;
-      }
-
-      const payload = await apiRequest("/login", undefined, {
-        method: "POST",
-        body: JSON.stringify({ sid, password })
-      });
+      const payload = await api.login(sid, password);
       if (!payload.token || !payload.name || !payload.id) {
         throw new Error("登录响应缺少 token");
       }
       const nextAuth = { token: payload.token, name: payload.name, id: payload.id };
-      localStorage.setItem(tokenKey, payload.token);
-      localStorage.setItem(userKey, JSON.stringify({ name: payload.name, id: payload.id }));
+      saveAuth(nextAuth);
       setAuth(nextAuth);
-      setNotice("登录成功，可以开始选课。");
+      navigate("/dashboard");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "操作失败");
+      setNotice(error instanceof Error ? error.message : "登录失败");
     } finally {
-      setLoading(false);
+      setLoadingAuth(false);
     }
   }
 
   function logout() {
     clearTimers();
-    localStorage.removeItem(tokenKey);
-    localStorage.removeItem(userKey);
+    clearAuth();
     setAuth(null);
     setSelections([]);
-    setResultState("idle");
-    setActiveStep(0);
-    setNotice("已退出登录。");
+    setPendingCourseIds(new Set());
+    setProcessingCourse(null);
+    setProcessingState("idle");
+    navigate("/login");
   }
 
-  function startStageAnimation() {
-    setActiveStep(1);
-    if (stageRef.current) window.clearInterval(stageRef.current);
-    stageRef.current = window.setInterval(() => {
-      setActiveStep((current) => Math.min(current + 1, timeline.length - 2));
-    }, 520);
-  }
-
-  function stopPolling(finalState: ResultState) {
+  function beginProcessing(course: Course) {
     clearTimers();
-    setResultState(finalState);
-    setActiveStep(finalState === "success" ? timeline.length : timeline.length - 1);
+    setProcessingCourse(course);
+    setProcessingState("pending");
+    setProcessingMessage("请求已进入异步队列");
+    setActiveStep(0);
+    setPendingCourseIds((current) => new Set(current).add(course.ID));
+    stageRef.current = window.setInterval(() => {
+      setActiveStep((current) => Math.min(current + 1, processingSteps.length - 1));
+    }, 720);
   }
 
-  async function pollResult(courseID: number) {
+  async function finishProcessing(course: Course, state: ProcessingState, message: string) {
+    clearTimers();
+    setProcessingState(state);
+    setProcessingMessage(message);
+    setActiveStep(state === "success" ? processingSteps.length : processingSteps.length - 1);
+    setPendingCourseIds((current) => {
+      const next = new Set(current);
+      next.delete(course.ID);
+      return next;
+    });
+    await Promise.all([loadCourses(), loadSelections()]);
+  }
+
+  async function pollResult(course: Course) {
     if (!auth) return;
     try {
-      const payload = await apiRequest(`/auth/result/${courseID}`, auth.token);
-      const nextState = resultFromMessage(payload.msg);
-      if (nextState !== "pending") {
-        stopPolling(nextState);
-        setNotice(payload.msg || statusLabel(nextState));
-        await Promise.all([refreshCourse(courseID), loadSelections()]);
+      const payload = await api.getResult(course.ID, auth.token);
+      const nextState = resultFromMessage(payload.status || payload.msg);
+      if (nextState === "success") {
+        await finishProcessing(course, "success", "选课成功，MySQL 已确认落库。");
+      } else if (nextState === "failed") {
+        await finishProcessing(course, "failed", payload.msg || "库存不足 / 重复选课 / 队列处理失败");
+      } else if (nextState === "dropped") {
+        await finishProcessing(course, "success", "当前课程已退课。");
+      } else {
+        setProcessingMessage("RabbitMQ 正在削峰处理，MySQL 正在确认落库。");
       }
     } catch (error) {
-      stopPolling("failed");
-      setNotice(error instanceof Error ? error.message : "查询结果失败");
+      await finishProcessing(course, "failed", error instanceof Error ? error.message : "查询结果失败");
     }
   }
 
-  async function selectCourse() {
-    if (!auth || !selectedCourse) {
-      setNotice("请先登录并选择课程。");
+  async function selectCourse(course: Course) {
+    if (!auth) {
+      setNotice("请先登录再提交选课请求。");
+      navigate("/login");
       return;
     }
-    setBusyAction("select");
-    setResultState("pending");
-    startStageAnimation();
+    if (getCourseStatus(course) === "full") return;
+    beginProcessing(course);
     try {
-      const payload = await apiRequest(`/auth/select/${selectedCourse.ID}`, auth.token, { method: "POST" });
-      setNotice(payload.msg || "排队中");
-      await pollResult(selectedCourse.ID);
-      pollingRef.current = window.setInterval(() => void pollResult(selectedCourse.ID), 1000);
+      const payload = await api.selectCourse(course.ID, auth.token);
+      setProcessingMessage(payload.msg || "请求已进入异步队列");
+      await pollResult(course);
+      pollingRef.current = window.setInterval(() => void pollResult(course), 1200);
     } catch (error) {
-      stopPolling("failed");
-      setNotice(error instanceof Error ? error.message : "选课失败");
-    } finally {
-      setBusyAction(null);
+      await finishProcessing(course, "failed", error instanceof Error ? error.message : "库存不足，选课失败");
     }
   }
 
-  async function dropCourse() {
-    if (!auth || !selectedCourse) {
-      setNotice("请先登录并选择课程。");
-      return;
-    }
-    setBusyAction("drop");
+  async function confirmDropCourse() {
+    if (!auth || dropTarget === null) return;
+    const courseId = dropTarget;
+    setDropTarget(null);
     try {
-      const payload = await apiRequest(`/auth/select/${selectedCourse.ID}`, auth.token, { method: "DELETE" });
-      clearTimers();
-      setResultState("dropped");
-      setActiveStep(0);
-      setNotice(payload.msg || "退课成功");
-      await Promise.all([refreshCourse(selectedCourse.ID), loadSelections()]);
+      await api.dropCourse(courseId, auth.token);
+      setNotice("退课成功");
+      await Promise.all([loadCourses(), loadSelections()]);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "退课失败");
-    } finally {
-      setBusyAction(null);
     }
   }
 
+  const courseForRoute = route.page === "course" ? courses.find((course) => course.ID === route.courseId) : undefined;
+
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark">
-            <Sparkles size={22} />
-          </div>
-          <div>
-            <h1>高并发选课演示台</h1>
-            <p>Redis Lua + Stream + RabbitMQ + MySQL</p>
-          </div>
-        </div>
-          <div className="top-actions">
-          <div className="health-pill">
-            <Activity size={16} />
-            秒杀链路展示
-          </div>
-          {auth ? (
-            <button className="user-pill" onClick={logout}>
-              <UserRound size={16} />
-              {auth.name}
-              <LogOut size={16} />
-            </button>
-          ) : null}
-        </div>
-      </header>
+    <div className="app-shell">
+      {route.page !== "login" ? <Navbar route={route} auth={auth} onNavigate={navigate} onLogout={logout} /> : null}
+      {notice && route.page !== "login" ? <div className="global-notice">{notice}</div> : null}
 
-      <section className="workspace">
-        <aside className="course-panel">
-          <div className="panel-heading">
-            <div>
-              <span className="eyebrow">Course Pool</span>
-              <h2>课程池</h2>
-            </div>
-            <button className="icon-button" onClick={() => void loadCourses()} disabled={loading}>
-              {loading ? <Loader2 className="spin" size={18} /> : <RotateCcw size={18} />}
-            </button>
-          </div>
+      {route.page === "login" ? (
+        <LoginPage
+          sid={sid}
+          password={password}
+          loading={loadingAuth}
+          notice={notice}
+          onSid={setSid}
+          onPassword={setPassword}
+          onSubmit={handleLogin}
+        />
+      ) : route.page === "selections" ? (
+        <SelectionsPage selections={selections} onDrop={setDropTarget} />
+      ) : route.page === "course" ? (
+        <CourseDetailPage
+          course={courseForRoute}
+          status={courseForRoute ? getCourseStatus(courseForRoute) : "full"}
+          processingState={processingState}
+          activeStep={activeStep}
+          onBack={() => navigate("/dashboard")}
+          onSelect={selectCourse}
+        />
+      ) : route.page === "performance" ? (
+        <PerformancePage />
+      ) : route.page === "architecture" ? (
+        <ArchitecturePage />
+      ) : (
+        <DashboardPage
+          courses={visibleCourses}
+          selections={selections}
+          query={query}
+          filter={filter}
+          onQuery={setQuery}
+          onFilter={setFilter}
+          getStatus={getCourseStatus}
+          onSelect={selectCourse}
+          onDetail={(course) => navigate(routeToPath({ page: "course", courseId: course.ID }))}
+        />
+      )}
 
-          <label className="search-box">
-            <Search size={17} />
-            <input
-              placeholder="搜索课程或 ID"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-
-          <div className="course-list">
-            {filteredCourses.map((course) => (
-              <button
-                key={course.ID}
-                className={`course-item ${selectedCourse?.ID === course.ID ? "active" : ""}`}
-                onClick={() => {
-                  setSelectedCourse(course);
-                  setResultState("idle");
-                  setActiveStep(0);
-                  clearTimers();
-                }}
-              >
-                <span className="course-main">
-                  <span className="course-name">{course.Name}</span>
-                  <span className="course-id">#{course.ID}</span>
-                </span>
-                <span className={`stock ${course.Stock > 0 ? "available" : "empty"}`}>库存 {course.Stock}</span>
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="center-panel">
-          {!auth ? (
-            <section className="auth-card">
-              <div className="auth-copy">
-                <span className="eyebrow">Student Access</span>
-                <h2>{authMode === "login" ? "登录学生账号" : "注册学生账号"}</h2>
-                <p>登录后可以发起选课、查询排队结果，并查看 Redis 到 MySQL 的异步链路演示。</p>
-              </div>
-              <form className="auth-form" onSubmit={handleAuth}>
-                <input placeholder="学号" value={sid} onChange={(event) => setSid(event.target.value)} />
-                {authMode === "register" ? (
-                  <input placeholder="姓名" value={name} onChange={(event) => setName(event.target.value)} />
-                ) : null}
-                <input
-                  type="password"
-                  placeholder="密码"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-                <button className="primary-button" type="submit" disabled={loading}>
-                  {loading ? <Loader2 className="spin" size={18} /> : null}
-                  {authMode === "login" ? "登录" : "注册"}
-                </button>
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() => setAuthMode(authMode === "login" ? "register" : "login")}
-                >
-                  {authMode === "login" ? "没有账号，去注册" : "已有账号，去登录"}
-                </button>
-              </form>
-            </section>
-          ) : (
-            <section className="operation-card">
-              <div className="course-hero">
-                <div>
-                  <span className="eyebrow">Selected Course</span>
-                  <h2>{selectedCourse?.Name || "请选择课程"}</h2>
-                  <p>
-                    教师 ID {selectedCourse?.TeacherID || "-"} · 课程 ID {selectedCourse?.ID || "-"}
-                  </p>
-                </div>
-                <div className="stock-meter">
-                  <span>实时库存</span>
-                  <strong>{selectedCourse?.Stock ?? "-"}</strong>
-                </div>
-              </div>
-
-              <div className="operation-grid">
-                <div className="command-block">
-                  <span className="eyebrow">Command</span>
-                  <div className="action-row">
-                    <button className="primary-button large" onClick={() => void selectCourse()} disabled={busyAction !== null}>
-                      {busyAction === "select" ? <Loader2 className="spin" size={18} /> : <BookOpen size={18} />}
-                      立即选课
-                    </button>
-                    <button className="danger-button large" onClick={() => void dropCourse()} disabled={busyAction !== null}>
-                      {busyAction === "drop" ? <Loader2 className="spin" size={18} /> : <XCircle size={18} />}
-                      退课
-                    </button>
-                  </div>
-                </div>
-
-                <div className={`result-banner ${resultState}`}>
-                  <div>
-                    <span>当前请求状态</span>
-                    <strong>{statusLabel(resultState)}</strong>
-                  </div>
-                  <p>{notice}</p>
-                </div>
-              </div>
-
-              <div className="selection-strip">
-                <div className="strip-header">
-                  <span className="eyebrow">My Selections</span>
-                  <button className="ghost-button compact" onClick={() => void loadSelections()}>
-                    刷新记录
-                  </button>
-                </div>
-                <div className="selection-list">
-                  {selections.length === 0 ? (
-                    <p className="empty-text">暂无选课记录。</p>
-                  ) : (
-                    selections.slice(0, 5).map((item) => (
-                      <div
-                        key={item.selection_id}
-                        className={`selection-row ${item.course_id === selectedRecord?.course_id ? "active" : ""}`}
-                      >
-                        <span>{item.course_name}</span>
-                        <small>{item.status_text}</small>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </section>
-          )}
-
-          <section className="flow-map">
-            {timeline.map((step, index) => {
-              const Icon = step.icon;
-              const active = index < activeStep;
-              const current = resultState === "pending" && index === activeStep - 1;
-              return (
-                <div className={`flow-node ${active ? "active" : ""} ${current ? "current" : ""}`} key={step.title}>
-                  <div className="node-icon">
-                    <Icon size={19} />
-                  </div>
-                  <div>
-                    <strong>{step.title}</strong>
-                    <span>{step.desc}</span>
-                  </div>
-                  {index < timeline.length - 1 ? <ArrowRight className="flow-arrow" size={18} /> : null}
-                </div>
-              );
-            })}
-          </section>
-        </section>
-
-        <aside className="timeline-panel">
-          <div className="panel-heading">
-            <div>
-              <span className="eyebrow">Async Status</span>
-              <h2>状态时间线</h2>
-            </div>
-            <Clock3 size={20} />
-          </div>
-
-          <div className="timeline-list">
-            {timeline.map((step, index) => {
-              const Icon = step.icon;
-              const done = index < activeStep;
-              const current = resultState === "pending" && index === activeStep - 1;
-              return (
-                <div className={`timeline-item ${done ? "done" : ""} ${current ? "current" : ""}`} key={step.title}>
-                  <div className="timeline-dot">
-                    <Icon size={16} />
-                  </div>
-                  <div>
-                    <strong>{step.title}</strong>
-                    <p>{step.desc}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </aside>
-      </section>
-    </main>
+      {loadingCourses ? <div className="loading-ribbon">正在同步课程库存...</div> : null}
+      <SelectionDrawer
+        course={processingCourse}
+        open={processingState !== "idle" && Boolean(processingCourse)}
+        state={processingState}
+        activeStep={activeStep}
+        message={processingMessage}
+        onClose={() => {
+          if (processingState !== "pending") setProcessingState("idle");
+        }}
+      />
+      <ConfirmDialog
+        open={dropTarget !== null}
+        title="确认退课"
+        desc="退课后库存会恢复，后续可以重新选择该课程。"
+        onCancel={() => setDropTarget(null)}
+        onConfirm={() => void confirmDropCourse()}
+      />
+    </div>
   );
 }
