@@ -28,6 +28,8 @@ func InitRouter() *gin.Engine {
 
 	r.POST("/register", api.Register)
 	r.POST("/login", api.Login)
+	r.POST("/benchmark/start", api.StartBenchmark)
+	r.GET("/benchmark/status", api.GetBenchmarkStatus)
 	r.GET("/courses", api.GetCourseList)
 	r.GET("/courses/:id", middleware.Bloomfilter(), api.GetCourseById)
 	r.Static("/assets", "./web/dist/assets")

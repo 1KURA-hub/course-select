@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Play } from "lucide-react";
+import { api } from "../api";
 import { MetricCard } from "../components/MetricCard";
+import type { BenchmarkPoint, BenchmarkStatus } from "../types";
 
 type Metric = { label: string; value: string; tone: string };
-type ChartPoint = { label: string; p50: number; p90: number; p99: number; qps: number };
-type RunTotals = { success: number; failed: number };
+type Monitor = { redisStock: number; queued: number; processing: number; dlq: number; written: number };
 
 const zeroMetrics: Metric[] = [
   { label: "QPS", value: "0", tone: "qps" },
@@ -15,6 +16,8 @@ const zeroMetrics: Metric[] = [
   { label: "不超卖验证", value: "—", tone: "safe" }
 ];
 
+const initialMonitor: Monitor = { redisStock: 1000, queued: 0, processing: 0, dlq: 0, written: 0 };
+
 export function PerformancePage() {
   const [stock, setStock] = useState(1000);
   const [users, setUsers] = useState(120);
@@ -23,86 +26,70 @@ export function PerformancePage() {
   const [countdown, setCountdown] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [totalSeconds, setTotalSeconds] = useState(30);
-  const [chartPoints, setChartPoints] = useState<ChartPoint[]>([]);
+  const [chartPoints, setChartPoints] = useState<BenchmarkPoint[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>(zeroMetrics);
-  const [runTotals, setRunTotals] = useState<RunTotals>({ success: 0, failed: 0 });
+  const [monitor, setMonitor] = useState<Monitor>(initialMonitor);
   const [finished, setFinished] = useState(false);
-
-  const progress = totalSeconds > 0 ? Math.min(elapsed / totalSeconds, 1) : 0;
-
-  const monitor = useMemo(() => {
-    if (!running && elapsed === 0 && runTotals.success === 0) {
-      return { redisStock: stock, queued: 0, processing: 0, dlq: 0, written: 0 };
-    }
-    const redisStock = Math.max(0, stock - runTotals.success);
-    const queueWave = running ? Math.sin(Math.PI * progress) : 0;
-    return {
-      redisStock,
-      queued: Math.max(0, Math.round(users * 2.8 * queueWave)),
-      processing: running ? Math.max(0, Math.round(users * 0.18 * (1 - progress * 0.35))) : 0,
-      dlq: running && progress > 0.72 ? Math.round((progress - 0.72) * users * 0.08) : 0,
-      written: runTotals.success
-    };
-  }, [elapsed, progress, runTotals.success, running, stock, users]);
+  const [notice, setNotice] = useState("等待真实压测开始");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!running) return;
-    const timer = window.setInterval(() => {
-      setElapsed((value) => {
-        const nextElapsed = value + 1;
-        const done = nextElapsed >= totalSeconds;
-        const qps = Math.floor(Math.random() * 3000 + 3000);
-        const p50 = Math.round(Math.random() * 6 + 12);
-        const p90 = Math.round(Math.random() * 10 + 30);
-        const p99 = Math.round(Math.random() * 20 + 70);
-        const successDelta = Math.max(1, Math.round((stock / Math.max(totalSeconds, 1)) * (0.72 + Math.random() * 0.56)));
-        const failedDelta = Math.floor(Math.random() * Math.max(2, users / 40));
-        setRunTotals((current) => {
-          const nextSuccess = Math.min(stock, current.success + successDelta);
-          const nextFailed = current.failed + failedDelta;
-          const liveMetrics: Metric[] = [
-            { label: "QPS", value: qps.toLocaleString(), tone: "qps" },
-            { label: "平均延迟", value: `${p50}ms`, tone: "latency" },
-            { label: "P99 延迟", value: `${p99}ms`, tone: "p99" },
-            { label: "成功请求", value: nextSuccess.toLocaleString(), tone: "success" },
-            { label: "失败请求", value: nextFailed.toLocaleString(), tone: "failed" },
-            { label: "不超卖验证", value: "验证中", tone: "safe" }
-          ];
-          setMetrics(done ? finalMetrics(stock, nextSuccess, nextFailed, totalSeconds) : liveMetrics);
-          return { success: nextSuccess, failed: nextFailed };
-        });
-        setChartPoints((points) => [
-          ...points.slice(-59),
-          {
-            label: `${nextElapsed}s`,
-            p50,
-            p90,
-            p99,
-            qps
-          }
-        ]);
-        setCountdown(done ? 0 : Math.max(0, totalSeconds - nextElapsed));
-        if (done) {
-          setRunning(false);
-          setFinished(true);
-        }
-        return nextElapsed;
-      });
-    }, 1000);
+    let active = true;
 
-    return () => window.clearInterval(timer);
-  }, [running, stock, totalSeconds, users]);
+    async function syncStatus() {
+      try {
+        const payload = await api.getBenchmarkStatus();
+        if (!active || !payload.data) return;
+        applyStatus(payload.data);
+      } catch (err) {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "获取压测状态失败");
+      }
+    }
 
-  function startBenchmark() {
-    const seconds = Number(duration.replace("s", ""));
-    setTotalSeconds(seconds);
-    setCountdown(seconds);
+    void syncStatus();
+    const timer = window.setInterval(syncStatus, 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [running]);
+
+  async function startBenchmark() {
+    setError("");
+    setFinished(false);
+    setRunning(true);
+    setCountdown(Number(duration.replace("s", "")));
     setElapsed(0);
     setChartPoints([]);
-    setRunTotals({ success: 0, failed: 0 });
-    setFinished(false);
-    setMetrics(zeroMetrics);
-    setRunning(true);
+    setMetrics([{ ...zeroMetrics[0] }, { ...zeroMetrics[1] }, { ...zeroMetrics[2] }, { ...zeroMetrics[3] }, { ...zeroMetrics[4] }, { label: "不超卖验证", value: "验证中", tone: "safe" }]);
+    setMonitor({ ...initialMonitor, redisStock: stock });
+    try {
+      const payload = await api.startBenchmark({ stock, users, duration, course_id: 1 });
+      if (payload.data) applyStatus(payload.data);
+    } catch (err) {
+      setRunning(false);
+      setError(err instanceof Error ? err.message : "启动真实压测失败");
+    }
+  }
+
+  function applyStatus(status: BenchmarkStatus) {
+    setRunning(status.running);
+    setFinished(status.finished);
+    setCountdown(status.countdown);
+    setElapsed(status.elapsed);
+    setTotalSeconds(status.total_seconds);
+    setNotice(status.message || (status.running ? "真实压测进行中" : "真实压测已结束"));
+    setMetrics(metricsFromStatus(status));
+    setMonitor({
+      redisStock: status.monitor.redis_stock,
+      queued: status.monitor.queued,
+      processing: status.monitor.processing,
+      dlq: status.monitor.dlq,
+      written: status.monitor.written
+    });
+    setChartPoints(status.points || []);
   }
 
   return (
@@ -110,7 +97,7 @@ export function PerformancePage() {
       <div className="page-heading">
         <span className="eyebrow">Performance Board</span>
         <h1>性能看板</h1>
-        <p>展示高并发选课链路在库存有限场景下的压测结果与系统能力。</p>
+        <p>点击开始压测后，服务器会真实并发请求选课接口，完整经过 JWT、Redis Lua、Redis Stream、RabbitMQ 与 MySQL 链路。</p>
       </div>
 
       <div className="benchmark-panel">
@@ -133,9 +120,15 @@ export function PerformancePage() {
         </label>
         <button className="primary-button" disabled={running} onClick={startBenchmark}>
           {running ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
-          {running ? `压测中... ${countdown}s` : "开始压测"}
+          {running ? `压测中... ${countdown}s` : "开始真实压测"}
         </button>
       </div>
+
+      <div className="benchmark-notice">
+        <span>{notice}</span>
+        <b>{elapsed > 0 ? `${elapsed}/${totalSeconds}s` : "READY"}</b>
+      </div>
+      {error ? <div className="form-notice">{error}</div> : null}
 
       <div className="metric-grid">
         {metrics.map((item) => <MetricCard key={item.label} {...item} />)}
@@ -176,17 +169,14 @@ export function PerformancePage() {
   );
 }
 
-function finalMetrics(stock: number, successTotal: number, failedTotal: number, seconds: number): Metric[] {
-  const success = Math.min(stock, successTotal);
-  const failed = failedTotal;
-  const qps = Math.round((success + failed) / Math.max(seconds, 1)) + Math.floor(Math.random() * 1200 + 3600);
+function metricsFromStatus(status: BenchmarkStatus): Metric[] {
   return [
-    { label: "QPS", value: qps.toLocaleString(), tone: "qps" },
-    { label: "平均延迟", value: `${Math.floor(Math.random() * 7 + 12)}ms`, tone: "latency" },
-    { label: "P99 延迟", value: `${Math.floor(Math.random() * 21 + 70)}ms`, tone: "p99" },
-    { label: "成功请求", value: success.toLocaleString(), tone: "success" },
-    { label: "失败请求", value: failed.toLocaleString(), tone: "failed" },
-    { label: "不超卖验证", value: success <= stock ? "通过" : "异常", tone: "safe" }
+    { label: "QPS", value: status.metrics.qps.toLocaleString(), tone: "qps" },
+    { label: "平均延迟", value: `${status.metrics.avg_latency}ms`, tone: "latency" },
+    { label: "P99 延迟", value: `${status.metrics.p99_latency}ms`, tone: "p99" },
+    { label: "成功请求", value: status.metrics.success.toLocaleString(), tone: "success" },
+    { label: "失败请求", value: status.metrics.failed.toLocaleString(), tone: "failed" },
+    { label: "不超卖验证", value: status.metrics.oversold_text || "—", tone: "safe" }
   ];
 }
 
@@ -205,7 +195,7 @@ function MiniLineCanvas({ written, stock }: { written: number; stock: number }) 
     canvas.height = height * ratio;
     canvas.style.width = "100%";
     canvas.style.height = `${height}px`;
-    ctx.scale(ratio, ratio);
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, width, height);
     const end = Math.min(written / Math.max(stock, 1), 1);
     const values = [0.04, 0.12, 0.2, 0.34, 0.48, 0.62, 0.78, end];
@@ -226,7 +216,7 @@ function MiniLineCanvas({ written, stock }: { written: number; stock: number }) 
   return <canvas className="mini-line" ref={canvasRef} aria-label="MySQL 落库增长趋势" />;
 }
 
-function LatencyChart({ points }: { points: ChartPoint[] }) {
+function LatencyChart({ points }: { points: BenchmarkPoint[] }) {
   return (
     <div className="line-chart-card">
       <strong>延迟分布</strong>
@@ -245,7 +235,7 @@ function LatencyChart({ points }: { points: ChartPoint[] }) {
   );
 }
 
-function ThroughputChart({ points, finished }: { points: ChartPoint[]; finished: boolean }) {
+function ThroughputChart({ points, finished }: { points: BenchmarkPoint[]; finished: boolean }) {
   return (
     <div className="line-chart-card">
       <strong>吞吐量 QPS</strong>
@@ -271,7 +261,7 @@ function ThroughputChart({ points, finished }: { points: ChartPoint[]; finished:
 function fixedLinePoints(values: number[], max: number) {
   if (values.length === 0) return "";
   if (values.length === 1) return `0,${42 - Math.min(values[0] / max, 1) * 34}`;
-  return values.map((value, index) => `${(index / (values.length - 1)) * 100},${42 - (value / max) * 34}`).join(" ");
+  return values.map((value, index) => `${(index / (values.length - 1)) * 100},${42 - Math.min(value / max, 1) * 34}`).join(" ");
 }
 
 function fixedAreaPoints(values: number[], max: number) {
@@ -279,7 +269,7 @@ function fixedAreaPoints(values: number[], max: number) {
   return `0,46 ${fixedLinePoints(values, max)} 100,46`;
 }
 
-function tickMarks(points: ChartPoint[]) {
+function tickMarks(points: BenchmarkPoint[]) {
   if (points.length <= 1) return [];
   return points
     .map((point, index) => ({ label: point.label, x: (index / (points.length - 1)) * 100, index }))

@@ -30,6 +30,39 @@ export type ApiResponse<T = unknown> = {
   status?: string;
 };
 
+export type BenchmarkPoint = {
+  label: string;
+  p50: number;
+  p90: number;
+  p99: number;
+  qps: number;
+};
+
+export type BenchmarkStatus = {
+  running: boolean;
+  finished: boolean;
+  countdown: number;
+  elapsed: number;
+  total_seconds: number;
+  metrics: {
+    qps: number;
+    avg_latency: number;
+    p99_latency: number;
+    success: number;
+    failed: number;
+    oversold_text: "—" | "验证中" | "通过" | "异常" | string;
+  };
+  monitor: {
+    redis_stock: number;
+    queued: number;
+    processing: number;
+    dlq: number;
+    written: number;
+  };
+  points: BenchmarkPoint[];
+  message: string;
+};
+
 export type AuthUser = {
   token: string;
   name: string;

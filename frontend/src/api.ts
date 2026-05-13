@@ -1,4 +1,4 @@
-import type { ApiResponse, AuthUser, Course, Selection } from "./types";
+import type { ApiResponse, AuthUser, BenchmarkStatus, Course, Selection } from "./types";
 
 const apiBase = import.meta.env.DEV ? "http://127.0.0.1:8080" : "";
 export const tokenKey = "course_select_token";
@@ -64,5 +64,8 @@ export const api = {
   getSelections: (token: string) => apiRequest<Selection[]>("/auth/selections", token),
   selectCourse: (id: number, token: string) => apiRequest(`/auth/select/${id}`, token, { method: "POST" }),
   dropCourse: (id: number, token: string) => apiRequest(`/auth/select/${id}`, token, { method: "DELETE" }),
-  getResult: (id: number, token: string) => apiRequest(`/auth/result/${id}`, token)
+  getResult: (id: number, token: string) => apiRequest(`/auth/result/${id}`, token),
+  startBenchmark: (payload: { stock: number; users: number; duration: string; course_id?: number }) =>
+    apiRequest<BenchmarkStatus>("/benchmark/start", undefined, { method: "POST", body: JSON.stringify(payload) }),
+  getBenchmarkStatus: () => apiRequest<BenchmarkStatus>("/benchmark/status")
 };

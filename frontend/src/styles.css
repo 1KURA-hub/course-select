@@ -726,6 +726,22 @@ h1, h2, h3, p { margin: 0; }
   font-size: 14px;
   font-weight: 500;
 }
+.benchmark-notice {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -4px 0 16px;
+  padding: 10px 14px;
+  color: var(--primary-hover);
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  font-size: 13px;
+  font-weight: 800;
+}
+.benchmark-notice b { color: var(--indigo-900); }
 
 .metric-grid {
   display: grid;
