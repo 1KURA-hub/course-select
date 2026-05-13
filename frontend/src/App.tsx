@@ -3,7 +3,6 @@ import { api, clearAuth, loadAuth, saveAuth } from "./api";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { Navbar } from "./components/Navbar";
 import { SelectionDrawer } from "./components/SelectionDrawer";
-import { processingSteps } from "./data";
 import { ArchitecturePage } from "./pages/ArchitecturePage";
 import { CourseDetailPage } from "./pages/CourseDetailPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -158,26 +157,33 @@ export function App() {
     setPendingCourseIds(new Set());
     setProcessingCourse(null);
     setProcessingState("idle");
+    setActiveStep(0);
+    setProcessingMessage("请求已进入异步队列");
     navigate("/login");
+  }
+
+  function closeProcessingModal() {
+    if (processingState === "pending") return;
+    setProcessingState("idle");
+    setProcessingCourse(null);
+    setActiveStep(0);
+    setProcessingMessage("请求已进入异步队列");
   }
 
   function beginProcessing(course: Course) {
     clearTimers();
     setProcessingCourse(course);
     setProcessingState("pending");
-    setProcessingMessage("请求已进入异步队列");
+    setProcessingMessage("正在发起选课请求");
     setActiveStep(0);
     setPendingCourseIds((current) => new Set(current).add(course.ID));
-    stageRef.current = window.setInterval(() => {
-      setActiveStep((current) => Math.min(current + 1, processingSteps.length - 1));
-    }, 720);
   }
 
   async function finishProcessing(course: Course, state: ProcessingState, message: string) {
     clearTimers();
     setProcessingState(state);
     setProcessingMessage(message);
-    setActiveStep(state === "success" ? processingSteps.length : processingSteps.length - 1);
+    setActiveStep(2);
     setPendingCourseIds((current) => {
       const next = new Set(current);
       next.delete(course.ID);
@@ -198,7 +204,8 @@ export function App() {
       } else if (nextState === "dropped") {
         await finishProcessing(course, "success", "当前课程已退课。");
       } else {
-        setProcessingMessage("RabbitMQ 正在削峰处理，MySQL 正在确认落库。");
+        setActiveStep(1);
+        setProcessingMessage("排队中，正在等待最终确认。");
       }
     } catch (error) {
       await finishProcessing(course, "failed", error instanceof Error ? error.message : "查询结果失败");
@@ -216,6 +223,7 @@ export function App() {
     try {
       const payload = await api.selectCourse(course.ID, auth.token);
       setProcessingMessage(payload.msg || "请求已进入异步队列");
+      setActiveStep(1);
       await pollResult(course);
       pollingRef.current = window.setInterval(() => void pollResult(course), 1200);
     } catch (error) {
@@ -289,9 +297,7 @@ export function App() {
         state={processingState}
         activeStep={activeStep}
         message={processingMessage}
-        onClose={() => {
-          if (processingState !== "pending") setProcessingState("idle");
-        }}
+        onClose={closeProcessingModal}
       />
       <ConfirmDialog
         open={dropTarget !== null}

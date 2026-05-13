@@ -1,17 +1,4 @@
-import {
-  Activity,
-  Blocks,
-  CheckCircle2,
-  Database,
-  Filter,
-  KeyRound,
-  MessageSquare,
-  Monitor,
-  Rabbit,
-  RotateCcw,
-  Server,
-  ShieldCheck
-} from "lucide-react";
+import { Activity, Blocks, CheckCircle2, Clock3, Database, Filter, KeyRound, MessageSquare, Monitor, RotateCcw, Send, Server, ShieldCheck } from "lucide-react";
 import type { Course } from "./types";
 
 export const courseNameFallbacks = [
@@ -35,12 +22,9 @@ export const fallbackCourses: Course[] = courseNameFallbacks.map((Name, index) =
 }));
 
 export const processingSteps = [
-  { title: "JWT 鉴权", desc: "校验学生身份与请求合法性", icon: KeyRound },
-  { title: "Redis Lua 原子预扣库存", desc: "库存扣减与重复请求判断在 Redis 内完成", icon: ShieldCheck },
-  { title: "Redis Stream 写入 Outbox", desc: "记录预扣成功消息，避免请求丢失", icon: MessageSquare },
-  { title: "RabbitMQ 异步削峰", desc: "消费端平滑处理高峰请求", icon: Rabbit },
-  { title: "MySQL 最终落库", desc: "事务扣减真实库存并写入选课记录", icon: Database },
-  { title: "结果确认", desc: "前端轮询确认最终选课结果", icon: CheckCircle2 }
+  { title: "发起选课请求", desc: "已向高并发选课接口提交请求", icon: Send },
+  { title: "排队中", desc: "请求已进入异步队列，等待最终确认", icon: Clock3 },
+  { title: "结果确认", desc: "等待选课成功或失败结果", icon: CheckCircle2 }
 ];
 
 export const performanceMetrics = [
@@ -60,7 +44,7 @@ export const architectureNodes = [
   { label: "Bloom Filter", desc: "拦截不存在课程 ID", icon: Filter },
   { label: "Redis Lua", desc: "原子预扣库存与防重复", icon: ShieldCheck },
   { label: "Redis Stream", desc: "Outbox 消息缓冲", icon: MessageSquare },
-  { label: "RabbitMQ", desc: "异步削峰与消费确认", icon: Rabbit },
+  { label: "RabbitMQ", desc: "异步削峰与消费确认", icon: MessageSquare },
   { label: "Retry Queue", desc: "失败消息延迟重试", icon: RotateCcw },
   { label: "Dead Letter Queue", desc: "异常消息兜底补偿", icon: Activity },
   { label: "MySQL", desc: "最终一致落库", icon: Database },

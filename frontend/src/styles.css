@@ -691,7 +691,7 @@ h1, h2, h3, p { margin: 0; }
 
 .benchmark-panel {
   display: grid;
-  grid-template-columns: 190px minmax(220px, 1fr) 160px 150px;
+  grid-template-columns: 190px minmax(220px, 1fr) 160px 184px;
   gap: 12px;
   align-items: end;
   margin-bottom: 16px;
@@ -720,11 +720,19 @@ h1, h2, h3, p { margin: 0; }
 }
 .benchmark-panel input[type="range"] { padding: 0; accent-color: var(--primary); }
 .benchmark-panel .primary-button {
+  justify-content: flex-start;
+  gap: 10px;
   min-height: 42px;
+  min-width: 184px;
   padding: 10px 28px;
   border-radius: 10px;
   font-size: 14px;
   font-weight: 500;
+  white-space: nowrap;
+}
+.benchmark-panel .primary-button svg {
+  flex: 0 0 16px;
+  margin-left: -6px;
 }
 .benchmark-notice {
   display: flex;

@@ -20,6 +20,7 @@ export function SelectionDrawer({
   if (!open || !course) return null;
   const success = state === "success";
   const failed = state === "failed";
+  const progress = Math.min(100, Math.round(((activeStep + 1) / 3) * 100));
 
   return (
     <div className="drawer-backdrop" onClick={(event) => event.target === event.currentTarget && onClose()}>
@@ -28,7 +29,7 @@ export function SelectionDrawer({
           <div>
             <span className="eyebrow">Async Course Selection</span>
             <h2>{course.Name}</h2>
-            <p>请求已进入高并发异步处理链路</p>
+            <p>跟踪本次选课请求的业务处理状态</p>
           </div>
           <button className="icon-button modal-close" onClick={onClose} aria-label="关闭处理面板">
             <X size={18} />
@@ -36,16 +37,16 @@ export function SelectionDrawer({
         </div>
 
         <div className="modal-progress">
-          <span>{Math.min(100, Math.round(((activeStep + (state === "success" ? 1 : 0)) / 6) * 100))}%</span>
-          <div><i style={{ width: `${Math.min(100, Math.round(((activeStep + (state === "success" ? 1 : 0)) / 6) * 100))}%` }} /></div>
+          <span>{progress}%</span>
+          <div><i style={{ width: `${progress}%` }} /></div>
           <strong>{success ? "选课成功" : failed ? "选课失败" : message}</strong>
         </div>
 
-        <ProcessingTimeline activeStep={activeStep} state={state} />
+        <ProcessingTimeline activeStep={activeStep} state={state} message={message} />
 
-        {state !== "failed" ? (
+        {state !== "pending" ? (
           <div className={`drawer-result ${state}`}>
-            <strong>{success ? "选课成功" : "请求已进入异步队列"}</strong>
+            <strong>{success ? "选课成功" : "选课失败"}</strong>
             <p>{message}</p>
           </div>
         ) : null}

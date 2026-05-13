@@ -61,7 +61,7 @@ export function CourseDetailPage({
 
       <div className="flow-card">
         <span className="eyebrow">High-Concurrency Flow</span>
-        <h2>{"用户请求 -> JWT -> Redis Lua -> Stream -> RabbitMQ -> MySQL"}</h2>
+        <h2>{"发起选课请求 -> 排队中 -> 结果确认"}</h2>
         <ProcessingTimeline activeStep={activeStep} state={processingState} />
       </div>
     </section>
