@@ -50,6 +50,8 @@ export type BenchmarkStatus = {
     p99_latency: number;
     success: number;
     failed: number;
+    rejected?: number;
+    system_errors?: number;
     oversold_text: "—" | "验证中" | "通过" | "异常" | string;
     failures?: BenchmarkFailures;
   };

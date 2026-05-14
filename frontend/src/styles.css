@@ -749,6 +749,8 @@ h1, h2, h3, p { margin: 0; }
   font-size: 13px;
   font-weight: 800;
 }
+.benchmark-notice.running { color: #0e7490; }
+.benchmark-notice.finished { color: #10b981; }
 .benchmark-notice b { color: var(--indigo-900); }
 .benchmark-guard {
   margin: -4px 0 16px;
@@ -765,7 +767,7 @@ h1, h2, h3, p { margin: 0; }
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px;
 }
 .metric-card {
@@ -791,6 +793,7 @@ h1, h2, h3, p { margin: 0; }
 .metric-card.latency strong { color: #0ea5e9; }
 .metric-card.p99 strong { color: #f59e0b; }
 .metric-card.success strong { color: #10b981; }
+.metric-card.rejected strong { color: #0891b2; }
 .metric-card.failed strong { color: #f87171; }
 .metric-card.safe strong { color: #10b981; }
 .realtime-panel {
@@ -809,6 +812,18 @@ h1, h2, h3, p { margin: 0; }
   animation: cardIn 420ms ease both;
 }
 .realtime-card strong { display: block; color: var(--body); }
+.redis-card em {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  padding: 2px 8px;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 6px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
 .realtime-card small {
   display: block;
   margin-top: 20px;
@@ -818,6 +833,17 @@ h1, h2, h3, p { margin: 0; }
   letter-spacing: 0.08em;
 }
 .realtime-card > span { display: block; margin-top: 6px; color: var(--indigo-900); font-size: 32px; font-weight: 900; animation: countPulse 0.5s ease; }
+.redis-card.exhausted > span { color: #ef4444; }
+.redis-card p {
+  position: absolute;
+  right: 18px;
+  bottom: 34px;
+  left: 18px;
+  margin: 0;
+  color: #9ca3af;
+  font-size: 12px;
+  font-weight: 800;
+}
 .stock-drain {
   position: absolute;
   right: 18px;
@@ -845,14 +871,16 @@ h1, h2, h3, p { margin: 0; }
   font-weight: 800;
 }
 .queue-mini span:nth-child(2) { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.12); }
-.queue-mini span:nth-child(3) { background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.12); }
+.queue-mini span.backlog-healthy { background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.12); }
+.queue-mini span.backlog-danger { background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.12); }
 .queue-mini b { color: #0891b2; font-size: 20px; animation: countPulse 0.5s ease; }
 .queue-mini span:nth-child(2) b { color: #f59e0b; }
-.queue-mini span:nth-child(3) b { color: #ef4444; }
+.queue-mini span.backlog-healthy b { color: #10b981; }
+.queue-mini span.backlog-danger b { color: #ef4444; }
 .mini-line { display: block; width: 100%; height: 60px; margin-top: 14px; }
 .failure-panel {
   display: grid;
-  grid-template-columns: 1.2fr repeat(6, minmax(0, 1fr));
+  grid-template-columns: 1.2fr repeat(5, minmax(0, 1fr));
   gap: 10px;
   align-items: center;
   margin-top: 16px;
