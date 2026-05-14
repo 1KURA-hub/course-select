@@ -8,7 +8,8 @@ export function LoginPage({
   notice,
   onSid,
   onPassword,
-  onSubmit
+  onSubmit,
+  onDemoLogin
 }: {
   sid: string;
   password: string;
@@ -17,6 +18,7 @@ export function LoginPage({
   onSid: (value: string) => void;
   onPassword: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
+  onDemoLogin: () => void;
 }) {
   return (
     <section className="login-page">
@@ -48,6 +50,10 @@ export function LoginPage({
         <button className="primary-button login-submit" disabled={loading || !sid || !password}>
           {loading ? <Loader2 className="spin" size={18} /> : <ArrowRight size={18} />}
           登录
+        </button>
+        <button className="ghost-button login-submit" type="button" disabled={loading} onClick={onDemoLogin}>
+          {loading ? <Loader2 className="spin" size={18} /> : <Zap size={18} />}
+          演示模式进入
         </button>
       </form>
     </section>

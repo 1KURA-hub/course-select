@@ -103,3 +103,52 @@ func Login(c *gin.Context) {
 	})
 
 }
+
+// DemoLogin 为项目演示提供免输入的真实登录态。
+// 它会复用正式注册/登录链路，返回可通过 AuthMiddleware 的 JWT。
+func DemoLogin(c *gin.Context) {
+	const demoSid = "demo-interviewer"
+	const demoPassword = "demo123456"
+	const demoName = "演示面试官"
+
+	err := service.Register(c.Request.Context(), &model.Student{
+		Sid:      demoSid,
+		Password: demoPassword,
+		Name:     demoName,
+	})
+	if err != nil && !errors.Is(err, service.ErrUserExist) {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": http.StatusInternalServerError,
+			"msg":  err.Error(),
+		})
+		return
+	}
+
+	savedStu, err := service.Login(c.Request.Context(), demoSid, demoPassword)
+	if err != nil {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": http.StatusInternalServerError,
+			"msg":  "演示账号登录失败",
+		})
+		return
+	}
+
+	tokenstr, err := utils.GenToken(savedStu.ID, savedStu.Name)
+	if err != nil {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code": http.StatusInternalServerError,
+			"msg":  "生成token时系统出错",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":  http.StatusOK,
+		"token": tokenstr,
+		"name":  savedStu.Name,
+		"id":    savedStu.ID,
+	})
+}

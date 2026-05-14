@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"go-course/global"
 	"go-course/model"
@@ -13,6 +14,7 @@ import (
 	"math"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,15 +48,26 @@ type benchmarkSnapshot struct {
 	Monitor      benchmarkMonitor `json:"monitor"`
 	Points       []benchmarkPoint `json:"points"`
 	Message      string           `json:"message"`
+	Limits       benchmarkLimits  `json:"limits"`
 }
 
 type benchmarkMetrics struct {
-	QPS          int    `json:"qps"`
-	AvgLatency   int64  `json:"avg_latency"`
-	P99Latency   int64  `json:"p99_latency"`
-	Success      int64  `json:"success"`
-	Failed       int64  `json:"failed"`
-	OversoldText string `json:"oversold_text"`
+	QPS          int               `json:"qps"`
+	AvgLatency   int64             `json:"avg_latency"`
+	P99Latency   int64             `json:"p99_latency"`
+	Success      int64             `json:"success"`
+	Failed       int64             `json:"failed"`
+	OversoldText string            `json:"oversold_text"`
+	Failures     benchmarkFailures `json:"failures"`
+}
+
+type benchmarkFailures struct {
+	Unauthorized int64 `json:"unauthorized"`
+	StockEmpty   int64 `json:"stock_empty"`
+	Duplicate    int64 `json:"duplicate"`
+	ServerError  int64 `json:"server_error"`
+	NetworkError int64 `json:"network_error"`
+	Other        int64 `json:"other"`
 }
 
 type benchmarkMonitor struct {
@@ -74,18 +87,39 @@ type benchmarkBucket struct {
 	total     int
 	success   int64
 	failed    int64
+	failures  benchmarkFailures
+}
+
+type benchmarkLimits struct {
+	MaxStock             int  `json:"max_stock"`
+	MaxUsers             int  `json:"max_users"`
+	MaxSeconds           int  `json:"max_seconds"`
+	LargeStockThreshold  int  `json:"large_stock_threshold"`
+	LargeStockCooldown   int  `json:"large_stock_cooldown"`
+	SecondsUntilNextRun  int  `json:"seconds_until_next_run"`
+	LargeStockRestricted bool `json:"large_stock_restricted"`
 }
 
 var benchmarkRunner = struct {
 	sync.Mutex
-	cancel context.CancelFunc
-	state  benchmarkSnapshot
+	cancel       context.CancelFunc
+	state        benchmarkSnapshot
+	lastLargeRun time.Time
 }{
 	state: benchmarkSnapshot{
 		Metrics: benchmarkMetrics{OversoldText: "—"},
 		Message: "等待压测开始",
+		Limits:  currentBenchmarkLimits(0),
 	},
 }
+
+const (
+	benchmarkMaxStock            = 5000
+	benchmarkMaxUsers            = 200
+	benchmarkMaxSeconds          = 60
+	benchmarkLargeStockThreshold = 1000
+	benchmarkLargeStockCooldown  = 3 * time.Minute
+)
 
 func StartBenchmark(c *gin.Context) {
 	var req benchmarkRequest
@@ -99,19 +133,42 @@ func StartBenchmark(c *gin.Context) {
 	if req.Stock <= 0 {
 		req.Stock = 1000
 	}
+	if req.Stock > benchmarkMaxStock {
+		c.JSON(http.StatusBadRequest, gin.H{"code": http.StatusBadRequest, "msg": fmt.Sprintf("课程总库存不能超过 %d", benchmarkMaxStock)})
+		return
+	}
 	if req.Users < 1 {
 		req.Users = 10
 	}
-	if req.Users > 500 {
-		req.Users = 500
+	if req.Users > benchmarkMaxUsers {
+		c.JSON(http.StatusBadRequest, gin.H{"code": http.StatusBadRequest, "msg": fmt.Sprintf("并发用户数不能超过 %d", benchmarkMaxUsers)})
+		return
 	}
 	seconds := parseBenchmarkDuration(req.Duration)
+	if seconds > benchmarkMaxSeconds {
+		c.JSON(http.StatusBadRequest, gin.H{"code": http.StatusBadRequest, "msg": fmt.Sprintf("压测时长不能超过 %d 秒", benchmarkMaxSeconds)})
+		return
+	}
 
 	benchmarkRunner.Lock()
 	if benchmarkRunner.state.Running {
 		benchmarkRunner.Unlock()
 		c.JSON(http.StatusConflict, gin.H{"code": http.StatusConflict, "msg": "压测正在进行中"})
 		return
+	}
+	if req.Stock > benchmarkLargeStockThreshold {
+		nextAllowedAt := benchmarkRunner.lastLargeRun.Add(benchmarkLargeStockCooldown)
+		if !benchmarkRunner.lastLargeRun.IsZero() && time.Now().Before(nextAllowedAt) {
+			waitSeconds := int(math.Ceil(time.Until(nextAllowedAt).Seconds()))
+			benchmarkRunner.Unlock()
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"code": http.StatusTooManyRequests,
+				"msg":  fmt.Sprintf("高库存压测冷却中，请 %d 秒后重试", waitSeconds),
+				"data": benchmarkSnapshot{Limits: currentBenchmarkLimits(waitSeconds)},
+			})
+			return
+		}
+		benchmarkRunner.lastLargeRun = time.Now()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	benchmarkRunner.cancel = cancel
@@ -125,6 +182,7 @@ func StartBenchmark(c *gin.Context) {
 		Monitor:      benchmarkMonitor{RedisStock: req.Stock},
 		Points:       []benchmarkPoint{},
 		Message:      "真实压测已启动",
+		Limits:       currentBenchmarkLimits(0),
 	}
 	snapshot := cloneBenchmarkSnapshotLocked()
 	benchmarkRunner.Unlock()
@@ -174,8 +232,8 @@ func runBenchmark(ctx context.Context, req benchmarkRequest, seconds int) {
 				default:
 				}
 				next := atomic.AddUint64(&seq, 1)
-				latency, ok := sendBenchmarkRequest(runCtx, client, req.CourseID, uint(baseStudentID+next))
-				bucket.add(latency, ok)
+				latency, ok, reason := sendBenchmarkRequest(runCtx, client, req.CourseID, uint(baseStudentID+next))
+				bucket.add(latency, ok, reason)
 			}
 		}()
 	}
@@ -184,6 +242,7 @@ func runBenchmark(ctx context.Context, req benchmarkRequest, seconds int) {
 	defer ticker.Stop()
 	totalSuccess := int64(0)
 	totalFailed := int64(0)
+	totalFailures := benchmarkFailures{}
 	points := make([]benchmarkPoint, 0, seconds)
 	startedAt := time.Now()
 
@@ -197,6 +256,7 @@ func runBenchmark(ctx context.Context, req benchmarkRequest, seconds int) {
 		tick := bucket.drain()
 		totalSuccess += tick.success
 		totalFailed += tick.failed
+		totalFailures.add(tick.failures)
 		point := benchmarkPoint{
 			Label: fmt.Sprintf("%ds", elapsed),
 			P50:   percentile(tick.latencies, 50),
@@ -222,10 +282,12 @@ func runBenchmark(ctx context.Context, req benchmarkRequest, seconds int) {
 				Success:      totalSuccess,
 				Failed:       totalFailed,
 				OversoldText: oversoldText(elapsed < seconds, monitor.Written, req.Stock),
+				Failures:     totalFailures,
 			},
 			Monitor: monitor,
 			Points:  append([]benchmarkPoint(nil), points...),
 			Message: "真实压测进行中",
+			Limits:  currentBenchmarkLimits(0),
 		})
 		if elapsed >= seconds || time.Since(startedAt) >= time.Duration(seconds)*time.Second {
 			break
@@ -242,19 +304,20 @@ func runBenchmark(ctx context.Context, req benchmarkRequest, seconds int) {
 	benchmarkRunner.state.Monitor = monitor
 	benchmarkRunner.state.Metrics.OversoldText = oversoldText(false, monitor.Written, req.Stock)
 	benchmarkRunner.state.Message = "真实压测已结束"
+	benchmarkRunner.state.Limits = currentBenchmarkLimits(0)
 	benchmarkRunner.cancel = nil
 	benchmarkRunner.Unlock()
 }
 
-func sendBenchmarkRequest(ctx context.Context, client *http.Client, courseID, studentID uint) (int64, bool) {
+func sendBenchmarkRequest(ctx context.Context, client *http.Client, courseID, studentID uint) (int64, bool, string) {
 	token, err := utils.GenToken(studentID, fmt.Sprintf("bench-%d", studentID))
 	if err != nil {
-		return 0, false
+		return 0, false, "server_error"
 	}
 	body := bytes.NewReader(nil)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://127.0.0.1:8080/auth/select/%d", courseID), body)
 	if err != nil {
-		return 0, false
+		return 0, false, "server_error"
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
@@ -263,11 +326,14 @@ func sendBenchmarkRequest(ctx context.Context, client *http.Client, courseID, st
 	resp, err := client.Do(req)
 	latency := time.Since(start).Milliseconds()
 	if err != nil {
-		return latency, false
+		return latency, false, "network_error"
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	return latency, resp.StatusCode >= 200 && resp.StatusCode < 300
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return latency, true, ""
+	}
+	return latency, false, classifyBenchmarkFailure(resp.StatusCode, raw)
 }
 
 func resetBenchmarkData(courseID uint, stock int) error {
@@ -339,7 +405,7 @@ func queueMessages(name string) int {
 	return queue.Messages
 }
 
-func (b *benchmarkBucket) add(latency int64, success bool) {
+func (b *benchmarkBucket) add(latency int64, success bool, reason string) {
 	b.Lock()
 	b.latencies = append(b.latencies, latency)
 	b.total++
@@ -347,6 +413,7 @@ func (b *benchmarkBucket) add(latency int64, success bool) {
 		b.success++
 	} else {
 		b.failed++
+		b.failures.inc(reason)
 	}
 	b.Unlock()
 }
@@ -359,11 +426,13 @@ func (b *benchmarkBucket) drain() benchmarkBucket {
 		total:     b.total,
 		success:   b.success,
 		failed:    b.failed,
+		failures:  b.failures,
 	}
 	b.latencies = b.latencies[:0]
 	b.total = 0
 	b.success = 0
 	b.failed = 0
+	b.failures = benchmarkFailures{}
 	return next
 }
 
@@ -379,6 +448,7 @@ func finishBenchmarkWithError(message string) {
 	benchmarkRunner.state.Finished = true
 	benchmarkRunner.state.Message = message
 	benchmarkRunner.state.Metrics.OversoldText = "异常"
+	benchmarkRunner.state.Limits = currentBenchmarkLimits(0)
 	benchmarkRunner.cancel = nil
 	benchmarkRunner.Unlock()
 }
@@ -398,6 +468,67 @@ func parseBenchmarkDuration(value string) int {
 	default:
 		return 30
 	}
+}
+
+func currentBenchmarkLimits(secondsUntilNextRun int) benchmarkLimits {
+	return benchmarkLimits{
+		MaxStock:             benchmarkMaxStock,
+		MaxUsers:             benchmarkMaxUsers,
+		MaxSeconds:           benchmarkMaxSeconds,
+		LargeStockThreshold:  benchmarkLargeStockThreshold,
+		LargeStockCooldown:   int(benchmarkLargeStockCooldown.Seconds()),
+		SecondsUntilNextRun:  maxInt(secondsUntilNextRun, 0),
+		LargeStockRestricted: secondsUntilNextRun > 0,
+	}
+}
+
+func classifyBenchmarkFailure(statusCode int, body []byte) string {
+	if statusCode == http.StatusUnauthorized {
+		return "unauthorized"
+	}
+	msg := string(body)
+	var payload struct {
+		Msg string `json:"msg"`
+	}
+	if err := json.Unmarshal(body, &payload); err == nil && payload.Msg != "" {
+		msg = payload.Msg
+	}
+	switch {
+	case strings.Contains(msg, "库存不足"):
+		return "stock_empty"
+	case strings.Contains(msg, "重复") || strings.Contains(msg, "不可重复"):
+		return "duplicate"
+	case statusCode >= http.StatusInternalServerError || strings.Contains(msg, "系统繁忙"):
+		return "server_error"
+	default:
+		return "other"
+	}
+}
+
+func (f *benchmarkFailures) inc(reason string) {
+	switch reason {
+	case "unauthorized":
+		f.Unauthorized++
+	case "stock_empty":
+		f.StockEmpty++
+	case "duplicate":
+		f.Duplicate++
+	case "server_error":
+		f.ServerError++
+	case "network_error":
+		f.NetworkError++
+	default:
+		f.Other++
+	}
+}
+
+func (f *benchmarkFailures) add(next benchmarkFailures) {
+	f.Unauthorized += next.Unauthorized
+	f.StockEmpty += next.StockEmpty
+	f.Duplicate += next.Duplicate
+	f.ServerError += next.ServerError
+	f.NetworkError += next.NetworkError
+	f.Other += next.Other
 }
 
 func percentile(values []int64, p int) int64 {

@@ -32,6 +32,7 @@ export function App() {
   const [dropTarget, setDropTarget] = useState<number | null>(null);
   const stageRef = useRef<number | null>(null);
   const pollingRef = useRef<number | null>(null);
+  const demoLoginRef = useRef(false);
 
   const navigate = useCallback((path: string) => {
     window.history.pushState({}, "", path);
@@ -90,11 +91,34 @@ export function App() {
     void loadSelections();
   }, [loadSelections]);
 
+  const enterDemoMode = useCallback(async (redirectToDashboard = false) => {
+    if (demoLoginRef.current) return;
+    demoLoginRef.current = true;
+    setLoadingAuth(true);
+    setNotice("");
+    try {
+      const payload = await api.demoLogin();
+      if (!payload.token || !payload.name || !payload.id) {
+        throw new Error("演示登录响应缺少 token");
+      }
+      const nextAuth = { token: payload.token, name: payload.name, id: payload.id };
+      saveAuth(nextAuth);
+      setAuth(nextAuth);
+      if (redirectToDashboard) navigate("/dashboard");
+    } catch (error) {
+      setNotice(error instanceof Error ? `演示登录失败：${error.message}` : "演示登录失败");
+      if (route.page !== "login") navigate("/login");
+    } finally {
+      setLoadingAuth(false);
+      demoLoginRef.current = false;
+    }
+  }, [navigate, route.page]);
+
   useEffect(() => {
     if (!auth && route.page !== "login") {
-      navigate("/login");
+      void enterDemoMode(false);
     }
-  }, [auth, navigate, route.page]);
+  }, [auth, enterDemoMode, route.page]);
 
   const selectedCourseIds = useMemo(() => new Set(selections.filter((item) => item.status === 1).map((item) => item.course_id)), [selections]);
 
@@ -147,6 +171,10 @@ export function App() {
     } finally {
       setLoadingAuth(false);
     }
+  }
+
+  function handleDemoLogin() {
+    void enterDemoMode(true);
   }
 
   function logout() {
@@ -260,6 +288,7 @@ export function App() {
           onSid={setSid}
           onPassword={setPassword}
           onSubmit={handleLogin}
+          onDemoLogin={handleDemoLogin}
         />
       ) : route.page === "selections" ? (
         <SelectionsPage selections={selections} onDrop={setDropTarget} />

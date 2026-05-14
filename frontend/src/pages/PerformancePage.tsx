@@ -2,10 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Play } from "lucide-react";
 import { api } from "../api";
 import { MetricCard } from "../components/MetricCard";
-import type { BenchmarkPoint, BenchmarkStatus } from "../types";
+import type { BenchmarkFailures, BenchmarkPoint, BenchmarkStatus } from "../types";
 
 type Metric = { label: string; value: string; tone: string };
 type Monitor = { redisStock: number; queued: number; processing: number; dlq: number; written: number; mqPublished: number; mqConsumed: number; mqBacklog: number };
+
+const maxStock = 5000;
+const maxUsers = 200;
+const largeStockThreshold = 1000;
+const emptyFailures: BenchmarkFailures = { unauthorized: 0, stock_empty: 0, duplicate: 0, server_error: 0, network_error: 0, other: 0 };
 
 const zeroMetrics: Metric[] = [
   { label: "QPS", value: "0", tone: "qps" },
@@ -29,6 +34,7 @@ export function PerformancePage() {
   const [chartPoints, setChartPoints] = useState<BenchmarkPoint[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>(zeroMetrics);
   const [monitor, setMonitor] = useState<Monitor>(initialMonitor);
+  const [failures, setFailures] = useState<BenchmarkFailures>(emptyFailures);
   const [finished, setFinished] = useState(false);
   const [notice, setNotice] = useState("等待真实压测开始");
   const [error, setError] = useState("");
@@ -64,15 +70,19 @@ export function PerformancePage() {
     setElapsed(0);
     setChartPoints([]);
     setMetrics([{ ...zeroMetrics[0] }, { ...zeroMetrics[1] }, { ...zeroMetrics[2] }, { ...zeroMetrics[3] }, { ...zeroMetrics[4] }, { label: "不超卖验证", value: "验证中", tone: "safe" }]);
-    setMonitor({ ...initialMonitor, redisStock: stock });
+    setMonitor({ ...initialMonitor, redisStock: normalizedStock });
+    setFailures(emptyFailures);
     try {
-      const payload = await api.startBenchmark({ stock, users, duration, course_id: 1 });
+      const payload = await api.startBenchmark({ stock: normalizedStock, users: normalizedUsers, duration, course_id: 1 });
       if (payload.data) applyStatus(payload.data);
     } catch (err) {
       setRunning(false);
       setError(err instanceof Error ? err.message : "启动真实压测失败");
     }
   }
+
+  const normalizedStock = Math.min(Math.max(stock || 1, 1), maxStock);
+  const normalizedUsers = Math.min(Math.max(users || 1, 1), maxUsers);
 
   function applyStatus(status: BenchmarkStatus) {
     setRunning(status.running);
@@ -92,6 +102,7 @@ export function PerformancePage() {
       mqConsumed: status.monitor.mq_consumed ?? status.monitor.processing,
       mqBacklog: status.monitor.mq_backlog ?? status.monitor.queued
     });
+    setFailures(status.metrics.failures || emptyFailures);
     setChartPoints(status.points || []);
   }
 
@@ -106,11 +117,19 @@ export function PerformancePage() {
       <div className="benchmark-panel">
         <label>
           课程总库存
-          <input type="number" min={1} value={stock} disabled={running} onChange={(event) => setStock(Number(event.target.value))} />
+          <input
+            type="number"
+            min={1}
+            max={maxStock}
+            value={stock}
+            disabled={running}
+            onBlur={() => setStock(normalizedStock)}
+            onChange={(event) => setStock(Number(event.target.value))}
+          />
         </label>
         <label>
           并发用户数
-          <input type="range" min={10} max={500} value={users} disabled={running} onChange={(event) => setUsers(Number(event.target.value))} />
+          <input type="range" min={10} max={maxUsers} value={users} disabled={running} onChange={(event) => setUsers(Number(event.target.value))} />
           <span>{users}</span>
         </label>
         <label>
@@ -121,16 +140,18 @@ export function PerformancePage() {
             <option>60s</option>
           </select>
         </label>
-        <button className="primary-button" disabled={running} onClick={startBenchmark}>
+        <button className="primary-button" disabled={running || normalizedStock !== stock || normalizedUsers !== users} onClick={startBenchmark}>
           {running ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
           {running ? `压测中... ${countdown}s` : "开始真实压测"}
         </button>
       </div>
 
       <div className="benchmark-notice">
-        <span>{notice}</span>
+        <span>{notice} · 库存≤1000不限次数，库存&gt;1000 每3分钟一次</span>
         <b>{elapsed > 0 ? `${elapsed}/${totalSeconds}s` : "READY"}</b>
       </div>
+      {stock > largeStockThreshold ? <div className="benchmark-guard">高库存真实压测已开启保护：当前库存超过 1000，后端会限制 3 分钟内只能启动一次。</div> : null}
+      {normalizedStock !== stock || normalizedUsers !== users ? <div className="form-notice">参数超出安全范围：库存最高 {maxStock}，并发最高 {maxUsers}。</div> : null}
       {error ? <div className="form-notice">{error}</div> : null}
 
       <div className="metric-grid">
@@ -144,8 +165,8 @@ export function PerformancePage() {
           <span key={monitor.redisStock}>{monitor.redisStock}</span>
           <div className="stock-drain">
             <i
-              className={monitor.redisStock / Math.max(stock, 1) < 0.1 ? "danger" : monitor.redisStock / Math.max(stock, 1) <= 0.3 ? "warn" : ""}
-              style={{ width: `${Math.max(0, (monitor.redisStock / Math.max(stock, 1)) * 100)}%` }}
+              className={monitor.redisStock / Math.max(normalizedStock, 1) < 0.1 ? "danger" : monitor.redisStock / Math.max(normalizedStock, 1) <= 0.3 ? "warn" : ""}
+              style={{ width: `${Math.max(0, (monitor.redisStock / Math.max(normalizedStock, 1)) * 100)}%` }}
             />
           </div>
         </div>
@@ -160,8 +181,18 @@ export function PerformancePage() {
         <div className="realtime-card">
           <strong>MySQL 落库</strong>
           <span key={monitor.written}>{monitor.written}</span>
-          <MiniLineCanvas written={monitor.written} stock={stock} />
+          <MiniLineCanvas written={monitor.written} stock={normalizedStock} />
         </div>
+      </div>
+
+      <div className="failure-panel">
+        <strong>失败原因诊断</strong>
+        <span>JWT 鉴权 <b>{failures.unauthorized}</b></span>
+        <span>库存不足 <b>{failures.stock_empty}</b></span>
+        <span>重复选课 <b>{failures.duplicate}</b></span>
+        <span>服务错误 <b>{failures.server_error}</b></span>
+        <span>网络错误 <b>{failures.network_error}</b></span>
+        <span>其他 <b>{failures.other}</b></span>
       </div>
 
       <div className="chart-panel">

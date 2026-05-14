@@ -43,22 +43,9 @@ export async function apiRequest<T>(path: string, token?: string, options: Reque
 }
 
 export const api = {
-  login: async (sid: string, password: string) => {
-    try {
-      return await apiRequest("/login", undefined, { method: "POST", body: JSON.stringify({ sid, password }) });
-    } catch (error) {
-      if (import.meta.env.DEV) {
-        return {
-          code: 200,
-          token: `dev-token-${sid || "student"}`,
-          name: sid || "演示学生",
-          id: Number(sid) || 1,
-          msg: "开发环境后端不可用，已进入前端演示模式"
-        };
-      }
-      throw error;
-    }
-  },
+  login: (sid: string, password: string) =>
+    apiRequest("/login", undefined, { method: "POST", body: JSON.stringify({ sid, password }) }),
+  demoLogin: () => apiRequest("/demo-login", undefined, { method: "POST" }),
   getCourses: () => apiRequest<Course[]>("/courses"),
   getCourse: (id: number) => apiRequest<Course>(`/courses/${id}`),
   getSelections: (token: string) => apiRequest<Selection[]>("/auth/selections", token),

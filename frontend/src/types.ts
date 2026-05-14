@@ -51,6 +51,7 @@ export type BenchmarkStatus = {
     success: number;
     failed: number;
     oversold_text: "—" | "验证中" | "通过" | "异常" | string;
+    failures?: BenchmarkFailures;
   };
   monitor: {
     redis_stock: number;
@@ -64,6 +65,26 @@ export type BenchmarkStatus = {
   };
   points: BenchmarkPoint[];
   message: string;
+  limits?: BenchmarkLimits;
+};
+
+export type BenchmarkFailures = {
+  unauthorized: number;
+  stock_empty: number;
+  duplicate: number;
+  server_error: number;
+  network_error: number;
+  other: number;
+};
+
+export type BenchmarkLimits = {
+  max_stock: number;
+  max_users: number;
+  max_seconds: number;
+  large_stock_threshold: number;
+  large_stock_cooldown: number;
+  seconds_until_next_run: number;
+  large_stock_restricted: boolean;
 };
 
 export type AuthUser = {
