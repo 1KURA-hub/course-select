@@ -91,7 +91,7 @@ export function App() {
     void loadSelections();
   }, [loadSelections]);
 
-  const enterDemoMode = useCallback(async (redirectToDashboard = false) => {
+  const enterDemoMode = useCallback(async (redirectToPerformance = false) => {
     if (demoLoginRef.current) return;
     demoLoginRef.current = true;
     setLoadingAuth(true);
@@ -104,7 +104,7 @@ export function App() {
       const nextAuth = { token: payload.token, name: payload.name, id: payload.id };
       saveAuth(nextAuth);
       setAuth(nextAuth);
-      if (redirectToDashboard) navigate("/dashboard");
+      if (redirectToPerformance) navigate("/performance");
     } catch (error) {
       setNotice(error instanceof Error ? `演示登录失败：${error.message}` : "演示登录失败");
       if (route.page !== "login") navigate("/login");
@@ -165,7 +165,7 @@ export function App() {
       const nextAuth = { token: payload.token, name: payload.name, id: payload.id };
       saveAuth(nextAuth);
       setAuth(nextAuth);
-      navigate("/dashboard");
+      navigate("/performance");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "登录失败");
     } finally {

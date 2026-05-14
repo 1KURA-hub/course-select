@@ -61,13 +61,14 @@ export function getCourseCapacity(course: Course) {
 
 export function getRoute(pathname = window.location.pathname): RouteState {
   if (pathname === "/login") return { page: "login" };
-  if (pathname === "/" || pathname === "/dashboard") return { page: "dashboard" };
+  if (pathname === "/") return { page: "performance" };
+  if (pathname === "/dashboard") return { page: "dashboard" };
   if (pathname === "/selections") return { page: "selections" };
   if (pathname === "/performance") return { page: "performance" };
   if (pathname === "/architecture") return { page: "architecture" };
   const match = pathname.match(/^\/courses\/(\d+)$/);
   if (match) return { page: "course", courseId: Number(match[1]) };
-  return { page: "dashboard" };
+  return { page: "performance" };
 }
 
 export function routeToPath(route: RouteState) {

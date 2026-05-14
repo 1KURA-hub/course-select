@@ -10,8 +10,8 @@ import {
 import type { AuthUser, RouteState } from "../types";
 
 const navItems: Array<{ page: RouteState["page"]; label: string; path: string; icon: typeof LayoutDashboard }> = [
-  { page: "dashboard", label: "课程市场", path: "/dashboard", icon: LayoutDashboard },
   { page: "performance", label: "性能看板", path: "/performance", icon: BarChart3 },
+  { page: "dashboard", label: "课程市场", path: "/dashboard", icon: LayoutDashboard },
   { page: "selections", label: "我的选课", path: "/selections", icon: BookOpen },
   { page: "architecture", label: "架构可视化", path: "/architecture", icon: GitBranch }
 ];
@@ -29,7 +29,7 @@ export function Navbar({
 }) {
   return (
     <nav className="navbar">
-      <button className="brand" onClick={() => onNavigate("/dashboard")}>
+      <button className="brand" onClick={() => onNavigate("/performance")}>
         <span className="brand-mark"><GraduationCap size={20} /></span>
         <span>
           <strong>CourseRush</strong>

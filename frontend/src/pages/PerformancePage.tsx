@@ -10,6 +10,7 @@ type Monitor = { redisStock: number; queued: number; processing: number; dlq: nu
 const maxStock = 5000;
 const maxUsers = 200;
 const largeStockThreshold = 1000;
+const statusRefreshMs = 2000;
 const emptyFailures: BenchmarkFailures = { unauthorized: 0, stock_empty: 0, duplicate: 0, server_error: 0, network_error: 0, other: 0 };
 
 const zeroMetrics: Metric[] = [
@@ -56,7 +57,7 @@ export function PerformancePage() {
     }
 
     void syncStatus();
-    const timer = window.setInterval(syncStatus, 1000);
+    const timer = window.setInterval(syncStatus, statusRefreshMs);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -70,7 +71,7 @@ export function PerformancePage() {
     setCountdown(Number(duration.replace("s", "")));
     setElapsed(0);
     setChartPoints([]);
-    setNotice("压测进行中，实时数据更新中...");
+    setNotice("压测进行中，数据每 2 秒刷新...");
     setMetrics([{ ...zeroMetrics[0] }, { ...zeroMetrics[1] }, { ...zeroMetrics[2] }, { ...zeroMetrics[3] }, { ...zeroMetrics[4] }, { ...zeroMetrics[5] }, { label: "不超卖验证", value: "验证中", tone: "safe" }]);
     setMonitor({ ...initialMonitor, redisStock: normalizedStock });
     setFailures(emptyFailures);
@@ -92,7 +93,7 @@ export function PerformancePage() {
     setCountdown(status.countdown);
     setElapsed(status.elapsed);
     setTotalSeconds(status.total_seconds);
-    setNotice(status.running ? "压测进行中，实时数据更新中..." : status.finished ? "压测已完成，以上为本次压测结果" : "");
+    setNotice(status.running ? "压测进行中，数据每 2 秒刷新..." : status.finished ? "压测已完成，以上为本次压测结果" : "");
     setMetrics(metricsFromStatus(status));
     setMonitor({
       redisStock: status.monitor.redis_stock,
@@ -127,7 +128,7 @@ export function PerformancePage() {
           <span>RabbitMQ</span>
           <span>MySQL 落库</span>
         </div>
-        <p className="benchmark-proof-note">每次压测前会重置 Redis 库存、Redis Stream、RabbitMQ 队列和该课程 MySQL 选课记录；下方结果来自 Redis / RabbitMQ / MySQL 的实时查询。</p>
+        <p className="benchmark-proof-note">每次压测前会重置 Redis 库存、Redis Stream、RabbitMQ 队列和该课程 MySQL 选课记录；下方结果来自 Redis / RabbitMQ / MySQL 的真实查询，页面每 2 秒刷新一次。</p>
       </div>
 
       <div className="benchmark-panel">
@@ -174,6 +175,12 @@ export function PerformancePage() {
 
       <div className="metric-grid">
         {metrics.map((item) => <MetricCard key={item.label} {...item} />)}
+      </div>
+
+      <div className={`oversell-proof ${finished ? "finished" : running ? "running" : ""}`}>
+        <span>不超卖验证口径</span>
+        <strong>MySQL 最终成功落库 {monitor.written.toLocaleString()} / 本次初始化库存 {normalizedStock.toLocaleString()}</strong>
+        <p>{finished ? "落库数不超过初始化库存即判定通过；如果落库数大于库存，页面会显示异常。" : "压测进行中先显示验证中，结束后以后端最终落库数判断是否通过。"}</p>
       </div>
 
       <div className="realtime-panel">
