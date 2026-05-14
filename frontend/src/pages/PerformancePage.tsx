@@ -116,6 +116,20 @@ export function PerformancePage() {
         <p>点击开始压测后，服务器会真实并发请求选课接口，完整经过 JWT、Redis Lua、Redis Stream、RabbitMQ 与 MySQL 链路。</p>
       </div>
 
+      <div className="benchmark-proof">
+        <div>
+          <strong>真实压测链路</strong>
+          <p>点击开始后，前端调用后端 /benchmark/start；后端为每个压测用户生成新的 JWT 和 studentID，并真实请求 /auth/select/:id。</p>
+        </div>
+        <div className="benchmark-proof-tags">
+          <span>真实接口</span>
+          <span>Redis Lua</span>
+          <span>RabbitMQ</span>
+          <span>MySQL 落库</span>
+        </div>
+        <p className="benchmark-proof-note">每次压测前会重置 Redis 库存、Redis Stream、RabbitMQ 队列和该课程 MySQL 选课记录；下方结果来自 Redis / RabbitMQ / MySQL 的实时查询。</p>
+      </div>
+
       <div className="benchmark-panel">
         <label>
           课程总库存

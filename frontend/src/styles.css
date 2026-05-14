@@ -689,6 +689,51 @@ h1, h2, h3, p { margin: 0; }
 .dialog-actions { display: flex; gap: 10px; margin-top: 20px; }
 .dialog-actions button { flex: 1; }
 
+.benchmark-proof {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 12px 34px rgba(8, 145, 178, 0.07);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.benchmark-proof strong {
+  color: var(--indigo-900);
+  font-size: 16px;
+}
+.benchmark-proof p {
+  margin-top: 6px;
+  color: var(--body);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.benchmark-proof-note {
+  grid-column: 1 / -1;
+  margin-top: 0 !important;
+  color: #64748b !important;
+}
+.benchmark-proof-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.benchmark-proof-tags span {
+  padding: 7px 10px;
+  color: var(--primary-hover);
+  background: rgba(8, 145, 178, 0.08);
+  border: 1px solid rgba(8, 145, 178, 0.14);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .benchmark-panel {
   display: grid;
   grid-template-columns: 190px minmax(220px, 1fr) 160px 184px;
@@ -804,13 +849,14 @@ h1, h2, h3, p { margin: 0; }
 }
 .realtime-card {
   position: relative;
-  min-height: 160px;
-  height: 160px;
+  min-height: 180px;
+  height: 180px;
   padding: 18px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.62);
   animation: cardIn 420ms ease both;
 }
+.redis-card { padding-bottom: 44px; }
 .realtime-card strong { display: block; color: var(--body); }
 .redis-card em {
   position: absolute;
@@ -835,11 +881,7 @@ h1, h2, h3, p { margin: 0; }
 .realtime-card > span { display: block; margin-top: 6px; color: var(--indigo-900); font-size: 32px; font-weight: 900; animation: countPulse 0.5s ease; }
 .redis-card.exhausted > span { color: #ef4444; }
 .redis-card p {
-  position: absolute;
-  right: 18px;
-  bottom: 34px;
-  left: 18px;
-  margin: 0;
+  margin: 10px 0 0;
   color: #9ca3af;
   font-size: 12px;
   font-weight: 800;
@@ -1195,7 +1237,8 @@ h1, h2, h3, p { margin: 0; }
   .login-brand-panel { min-height: auto; }
   .search-filter { align-items: stretch; flex-direction: column; }
   .filter-tabs { overflow-x: auto; }
-  .course-detail-layout, .chart-panel, .realtime-panel, .benchmark-panel, .failure-panel { grid-template-columns: 1fr; }
+  .course-detail-layout, .chart-panel, .realtime-panel, .benchmark-panel, .benchmark-proof, .failure-panel { grid-template-columns: 1fr; }
+  .benchmark-proof-tags { justify-content: flex-start; }
   .selection-row { grid-template-columns: 1fr; }
   .selection-row.head { display: none; }
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"go-course/global"
 	"go-course/model"
 	"go-course/service"
 	"go-course/utils"
@@ -109,7 +110,7 @@ func Login(c *gin.Context) {
 func DemoLogin(c *gin.Context) {
 	const demoSid = "demo-interviewer"
 	const demoPassword = "demo123456"
-	const demoName = "演示面试官"
+	const demoName = "演示"
 
 	err := service.Register(c.Request.Context(), &model.Student{
 		Sid:      demoSid,
@@ -133,6 +134,17 @@ func DemoLogin(c *gin.Context) {
 			"msg":  "演示账号登录失败",
 		})
 		return
+	}
+	if savedStu.Name != demoName {
+		if err := global.DB.WithContext(c.Request.Context()).Model(savedStu).Update("name", demoName).Error; err != nil {
+			c.Error(err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code": http.StatusInternalServerError,
+				"msg":  "更新演示账号名称失败",
+			})
+			return
+		}
+		savedStu.Name = demoName
 	}
 
 	tokenstr, err := utils.GenToken(savedStu.ID, savedStu.Name)
