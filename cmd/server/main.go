@@ -19,6 +19,7 @@ func main() {
 	initialize.InitMySQL()
 
 	global.DB.AutoMigrate(&model.Student{}, &model.Course{}, &model.Selection{})
+	initialize.SeedDemoCourses()
 
 	initialize.InitRedis()
 	initialize.InitBloomFilter()

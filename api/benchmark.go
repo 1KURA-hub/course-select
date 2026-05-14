@@ -339,8 +339,20 @@ func sendBenchmarkRequest(ctx context.Context, client *http.Client, courseID, st
 func resetBenchmarkData(courseID uint, stock int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
+	course := model.Course{ID: courseID}
+	if err := global.DB.WithContext(ctx).FirstOrCreate(&course, model.Course{
+		ID:        courseID,
+		Name:      "高并发系统设计",
+		TeacherID: 1001,
+		Stock:     stock,
+	}).Error; err != nil {
+		return err
+	}
 	if err := global.DB.WithContext(ctx).Model(&model.Course{}).Where("id = ?", courseID).Update("stock", stock).Error; err != nil {
 		return err
+	}
+	if global.CourseBloomFilter != nil {
+		global.CourseBloomFilter.AddString(fmt.Sprintf("%d", courseID))
 	}
 	if err := global.DB.WithContext(ctx).Where("course_id = ?", courseID).Delete(&model.Selection{}).Error; err != nil {
 		return err
